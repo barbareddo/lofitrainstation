@@ -207,6 +207,8 @@ button { font: inherit; }
 .track-copy strong, .track-copy span { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .track-copy strong { font-size: 12px; }
 .track-copy span { margin-top: 3px; font-size: 9px; color: rgba(255,255,255,.43); }
+.track-copy a { color: rgba(230,191,130,.78); text-decoration: none; }
+.track-copy a:hover { color: #e6bf82; text-decoration: underline; }
 .wave { height: 28px; display: flex; align-items: center; gap: 3px; opacity: .55; }
 .wave i { width: 2px; height: calc(3px + (var(--i) % 6) * 2px); border-radius: 2px; background: #d8b477; animation: wave .8s ease-in-out infinite alternate; animation-delay: calc(var(--i) * -.08s); }
 .now-playing:not(:has(.cover--playing)) .wave i { animation-play-state: paused; height: 3px; }

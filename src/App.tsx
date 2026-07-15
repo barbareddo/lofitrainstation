@@ -1,6 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Clock3, Headphones, MapPin, Maximize2, Pause, Play, Radio, Route, Volume2, VolumeX } from 'lucide-react'
-import { createAudioEngine } from './audio'
+import Clock3 from 'lucide-react/dist/esm/icons/clock-3.mjs'
+import Headphones from 'lucide-react/dist/esm/icons/headphones.mjs'
+import MapPin from 'lucide-react/dist/esm/icons/map-pin.mjs'
+import Maximize2 from 'lucide-react/dist/esm/icons/maximize-2.mjs'
+import Pause from 'lucide-react/dist/esm/icons/pause.mjs'
+import Play from 'lucide-react/dist/esm/icons/play.mjs'
+import Radio from 'lucide-react/dist/esm/icons/radio.mjs'
+import Route from 'lucide-react/dist/esm/icons/route.mjs'
+import Volume2 from 'lucide-react/dist/esm/icons/volume-2.mjs'
+import VolumeX from 'lucide-react/dist/esm/icons/volume-x.mjs'
+import { createAudioEngine, type AudioSource } from './audio'
 
 const TRAVEL_MS = 4 * 60 * 60 * 1000
 const STOP_MS = 8 * 60 * 1000
@@ -54,6 +63,7 @@ function formatDuration(ms: number) {
 function App() {
   const [now, setNow] = useState(Date.now())
   const [playing, setPlaying] = useState(false)
+  const [audioSource, setAudioSource] = useState<AudioSource>('radio')
   const [showJourney, setShowJourney] = useState(false)
   const audio = useRef<ReturnType<typeof createAudioEngine> | null>(null)
   
@@ -171,16 +181,22 @@ function App() {
   const timeOfDay = useMemo(() => getTimeOfDay(new Date(now)), [now])
   const localTime = new Date(now).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 
+  const startAudio = async () => {
+    const engine = createAudioEngine(setAudioSource)
+    audio.current = engine
+    await engine.context.resume()
+    engine.setWindowOpen(windowOpen / 100)
+    await engine.start()
+    setPlaying(true)
+  }
+
   const toggleAudio = async () => {
     if (playing) {
       audio.current?.stop()
       audio.current = null
       setPlaying(false)
     } else {
-      audio.current = createAudioEngine()
-      await audio.current.context.resume()
-      audio.current.setWindowOpen(windowOpen / 100)
-      setPlaying(true)
+      await startAudio()
     }
   }
 
@@ -197,10 +213,7 @@ function App() {
     
     // Auto start procedural music context
     if (!playing) {
-      audio.current = createAudioEngine()
-      await audio.current.context.resume()
-      audio.current.setWindowOpen(windowOpen / 100)
-      setPlaying(true)
+      await startAudio()
     }
     
     // Match CSS transition timing (1.4s) before unmounting overlay
@@ -388,7 +401,11 @@ function App() {
 
       <section className="now-playing">
         <div className={`cover ${playing ? 'cover--playing' : ''}`}><Headphones size={23} /></div>
-        <div className="track-copy"><small>NOW PLAYING · {timeOfDay.label}</small><strong>{timeOfDay.track}</strong><span>Original generative lofi · 72 BPM</span></div>
+        <div className="track-copy">
+          <small>NOW PLAYING · {audioSource === 'radio' ? 'LIVE 24/7' : timeOfDay.label}</small>
+          <strong>{audioSource === 'radio' ? 'Chilling' : timeOfDay.track}</strong>
+          <span>{audioSource === 'radio' ? <><a href="https://loficafe.net/chilling" target="_blank" rel="noreferrer">Lofi Cafe</a> · Train ambience</> : 'Original generative fallback · 72 BPM'}</span>
+        </div>
         <div className="wave" aria-hidden="true">{Array.from({ length: 18 }, (_, i) => <i key={i} style={{ '--i': i } as React.CSSProperties} />)}</div>
         <button className="play" onClick={toggleAudio} aria-label={playing ? 'Pause radio' : 'Play radio'}>
           {playing ? <Pause fill="currentColor" size={21} /> : <Play fill="currentColor" size={21} />}

@@ -1,8 +1,13 @@
 type AudioEngine = {
   context: AudioContext
+  start: () => Promise<void>
   stop: () => void
   setWindowOpen: (value: number) => void
 }
+
+export type AudioSource = 'radio' | 'fallback'
+
+const LOFI_STREAM_URL = 'https://radio.loficafe.net/listen/chilling/radio.mp3'
 
 const NOTES = [
   [146.83, 174.61, 220],
@@ -11,11 +16,22 @@ const NOTES = [
   [123.47, 155.56, 196],
 ]
 
-export function createAudioEngine(): AudioEngine {
+export function createAudioEngine(onSourceChange?: (source: AudioSource) => void): AudioEngine {
   const context = new AudioContext()
   const master = context.createGain()
   master.gain.value = 0.46
   master.connect(context.destination)
+
+  // Lofi Cafe's official 24/7 Chilling stream. It is mixed through Web Audio
+  // so the live station and our procedural train ambience share one control.
+  const radio = new Audio()
+  radio.crossOrigin = 'anonymous'
+  radio.preload = 'none'
+  radio.src = LOFI_STREAM_URL
+  const radioSource = context.createMediaElementSource(radio)
+  const radioGain = context.createGain()
+  radioGain.gain.value = 0.72
+  radioSource.connect(radioGain).connect(master)
 
   // Track the window open state (0.0 to 1.0)
   let windowOpenVal = 0.0
@@ -129,9 +145,45 @@ export function createAudioEngine(): AudioEngine {
     osc.stop(now + 0.15)
   }
 
+  let chordTimer: number | null = null
+  let reconnectTimer: number | null = null
+  let stopped = false
+
+  const stopFallback = () => {
+    if (chordTimer !== null) window.clearInterval(chordTimer)
+    chordTimer = null
+  }
+
+  const startFallback = () => {
+    if (stopped || chordTimer !== null) return
+    playChord()
+    chordTimer = window.setInterval(playChord, 7000)
+    onSourceChange?.('fallback')
+  }
+
+  const scheduleReconnect = () => {
+    if (stopped || reconnectTimer !== null) return
+    reconnectTimer = window.setTimeout(async () => {
+      reconnectTimer = null
+      try {
+        radio.load()
+        await radio.play()
+      } catch {
+        scheduleReconnect()
+      }
+    }, 12000)
+  }
+
+  radio.addEventListener('playing', () => {
+    stopFallback()
+    onSourceChange?.('radio')
+  })
+  radio.addEventListener('error', () => {
+    startFallback()
+    scheduleReconnect()
+  })
+
   playDoorOpenSound()
-  playChord()
-  const chordTimer = window.setInterval(playChord, 7000)
   const railTimer = window.setInterval(railClick, 560)
 
   // Dynamic wind speed modulation (gusts)
@@ -148,10 +200,24 @@ export function createAudioEngine(): AudioEngine {
 
   return {
     context,
+    start: async () => {
+      try {
+        await radio.play()
+        onSourceChange?.('radio')
+      } catch {
+        startFallback()
+        scheduleReconnect()
+      }
+    },
     stop: () => {
-      window.clearInterval(chordTimer)
+      stopped = true
+      stopFallback()
+      if (reconnectTimer !== null) window.clearTimeout(reconnectTimer)
       window.clearInterval(railTimer)
       window.clearInterval(windModTimer)
+      radio.pause()
+      radio.removeAttribute('src')
+      radio.load()
       context.close()
     },
     setWindowOpen: (value: number) => {
@@ -164,6 +230,9 @@ export function createAudioEngine(): AudioEngine {
       rumbleFilter.frequency.setTargetAtTime(rumbleFreq, now, 0.1)
       rumbleGain.gain.setTargetAtTime(rumbleVol, now, 0.1)
 
+      // The carriage radio recedes slightly as outside air becomes louder.
+      radioGain.gain.setTargetAtTime(0.72 - value * 0.12, now, 0.18)
+
       // Set base wind volume
       if (value <= 0.05) {
         windGain.gain.setTargetAtTime(0.0, now, 0.1)
@@ -173,4 +242,3 @@ export function createAudioEngine(): AudioEngine {
     }
   }
 }
-
