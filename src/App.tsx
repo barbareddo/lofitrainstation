@@ -28,13 +28,28 @@ function loadVolume(key: string, fallback: number) {
   }
 }
 
-const scenes = [
-  { src: '/scenes/milano-centrale-day.png', nightSrc: '/scenes/milano-centrale-night.png', label: 'Milano Centrale', detail: 'Platform 7 · Milano', at: 0, station: true },
-  { src: '/scenes/milan-departure-v2.webp', label: 'Leaving Milano', detail: 'Lombardy · IT', at: 0.055 },
-  { src: '/scenes/alps.webp', label: 'Crossing the Alps', detail: 'Val di Susa · IT', at: 0.31 },
-  { src: '/scenes/france-countryside.webp', label: 'French countryside', detail: 'Bourgogne · FR', at: 0.64 },
-  { src: '/scenes/paris-arrival.webp', label: 'Approaching Paris', detail: 'Île-de-France · FR', at: 0.87 },
-  { src: '/scenes/paris-gare-de-lyon-day.png', nightSrc: '/scenes/paris-gare-de-lyon-night.png', label: 'Paris Gare de Lyon', detail: 'Arrival platform · Paris', at: 0.975, station: true },
+interface Scene {
+  label: string
+  detail: string
+  at: number
+  station?: boolean
+  daySrc: string
+  dawnSrc?: string
+  goldenSrc?: string
+  duskSrc?: string
+  nightSrc?: string
+}
+
+type ScenePhase = 'night' | 'dawn' | 'day' | 'golden' | 'dusk'
+const SCENE_PHASES: ScenePhase[] = ['dawn', 'day', 'golden', 'dusk', 'night']
+
+const scenes: Scene[] = [
+  { daySrc: '/scenes/milano-centrale-day.png', nightSrc: '/scenes/milano-centrale-night.png', label: 'Milano Centrale', detail: 'Platform 7 · Milano', at: 0, station: true },
+  { daySrc: '/scenes/milan-departure-day.avif', goldenSrc: '/scenes/milan-departure-v2.webp', nightSrc: '/scenes/milan-departure-night.avif', label: 'Leaving Milano', detail: 'Lombardy · IT', at: 0.055 },
+  { daySrc: '/scenes/alps-day.avif', goldenSrc: '/scenes/alps.webp', nightSrc: '/scenes/alps-night.avif', label: 'Crossing the Alps', detail: 'Val di Susa · IT', at: 0.31 },
+  { daySrc: '/scenes/france-countryside-day.avif', goldenSrc: '/scenes/france-countryside.webp', nightSrc: '/scenes/france-countryside-night.avif', label: 'French countryside', detail: 'Bourgogne · FR', at: 0.64 },
+  { daySrc: '/scenes/paris-arrival-day.avif', goldenSrc: '/scenes/paris-arrival.webp', nightSrc: '/scenes/paris-arrival-night.avif', label: 'Approaching Paris', detail: 'Île-de-France · FR', at: 0.87 },
+  { daySrc: '/scenes/paris-gare-de-lyon-day.png', nightSrc: '/scenes/paris-gare-de-lyon-night.png', label: 'Paris Gare de Lyon', detail: 'Arrival platform · Paris', at: 0.975, station: true },
 ]
 
 function sceneOpacity(progress: number, index: number) {
@@ -52,17 +67,63 @@ function clamp(value: number, min = 0, max = 1) {
   return Math.min(max, Math.max(min, value))
 }
 
+function getSceneSrcForPhase(scene: Scene, phase: ScenePhase): string {
+  if (phase === 'dawn') return scene.dawnSrc || scene.daySrc
+  if (phase === 'golden') return scene.goldenSrc || scene.daySrc
+  if (phase === 'dusk') return scene.duskSrc || scene.daySrc
+  if (phase === 'night') return scene.nightSrc || scene.daySrc
+  return scene.daySrc
+}
+
+function getPreviewSceneSrc(scene: Scene, phase: ScenePhase): string {
+  if (phase === 'dawn') return scene.dawnSrc || scene.goldenSrc || scene.daySrc
+  if (phase === 'dusk') return scene.duskSrc || scene.nightSrc || scene.goldenSrc || scene.daySrc
+  return getSceneSrcForPhase(scene, phase)
+}
+
 function getTimeOfDay(date: Date) {
   const hour = date.getHours() + date.getMinutes() / 60
-  const daylight = clamp(Math.sin(((hour - 5.5) / 15) * Math.PI))
-  const dawnWarmth = clamp(1 - Math.abs(hour - 6.7) / 1.7)
-  const sunsetWarmth = clamp(1 - Math.abs(hour - 18.7) / 2.2)
-  const warmth = Math.max(dawnWarmth, sunsetWarmth)
-  if (hour < 5.5 || hour >= 22) return { label: 'NIGHT', track: 'Midnight carriage', daylight, warmth, phase: 'night' }
-  if (hour < 8) return { label: 'DAWN', track: 'First light over the rails', daylight, warmth, phase: 'dawn' }
-  if (hour < 17) return { label: 'DAYLIGHT', track: 'Window seat sketches', daylight, warmth, phase: 'day' }
-  if (hour < 20.5) return { label: 'GOLDEN HOUR', track: 'Sunset over Burgundy', daylight, warmth, phase: 'golden' }
-  return { label: 'BLUE HOUR', track: 'Evening express', daylight, warmth, phase: 'dusk' }
+  const weights = { night: 0, dawn: 0, day: 0, golden: 0, dusk: 0 }
+
+  const blend = (from: keyof typeof weights, to: keyof typeof weights, start: number, end: number) => {
+    const progress = clamp((hour - start) / (end - start))
+    weights[from] = 1 - progress
+    weights[to] = progress
+  }
+
+  if (hour < 5 || hour >= 23) weights.night = 1
+  else if (hour < 6) blend('night', 'dawn', 5, 6)
+  else if (hour < 7.5) weights.dawn = 1
+  else if (hour < 8.5) blend('dawn', 'day', 7.5, 8.5)
+  else if (hour < 16.5) weights.day = 1
+  else if (hour < 17.5) blend('day', 'golden', 16.5, 17.5)
+  else if (hour < 19.75) weights.golden = 1
+  else if (hour < 20.75) blend('golden', 'dusk', 19.75, 20.75)
+  else if (hour < 22) weights.dusk = 1
+  else blend('dusk', 'night', 22, 23)
+
+  const phases = [
+    { name: 'night', label: 'NIGHT', track: 'Midnight carriage' },
+    { name: 'dawn', label: 'DAWN', track: 'First light over the rails' },
+    { name: 'day', label: 'DAYLIGHT', track: 'Window seat sketches' },
+    { name: 'golden', label: 'GOLDEN HOUR', track: 'Sunset over Burgundy' },
+    { name: 'dusk', label: 'BLUE HOUR', track: 'Evening express' }
+  ] as const
+
+  const maxPhaseName = (Object.keys(weights) as Array<keyof typeof weights>).reduce((a, b) => weights[a] > weights[b] ? a : b)
+  const activePhase = phases.find(p => p.name === maxPhaseName) || phases[0]
+
+  const daylight = weights.day + (weights.dawn + weights.golden) * 0.72 + weights.dusk * 0.32
+  const warmth = Math.max(weights.dawn * 0.52, weights.golden, weights.dusk * 0.28)
+
+  return {
+    label: activePhase.label,
+    track: activePhase.track,
+    phase: activePhase.name,
+    daylight,
+    warmth,
+    weights,
+  }
 }
 
 function formatDuration(ms: number) {
@@ -328,7 +389,7 @@ function App() {
             aria-label="Slide the door to the right to enter the carriage"
           >
             <div className="cabin-glimpse" aria-hidden="true">
-              <div className="glimpse-landscape" style={{ backgroundImage: `url(${journey.scene.src})` }} />
+              <div className="glimpse-landscape" style={{ backgroundImage: `url(${getPreviewSceneSrc(journey.scene, timeOfDay.phase)})` }} />
               <img src="/train-carriage.webp" alt="" />
               <div className="glimpse-light" />
             </div>
@@ -360,22 +421,22 @@ function App() {
             key={scene.label}
             style={{ opacity: sceneOpacity(journey.progress, index) }}
           >
-            <div
-              className="scene scene--day"
-              style={{
-                backgroundImage: `url(${scene.src})`,
-                opacity: scene.nightSrc ? timeOfDay.daylight : 1,
-                '--drift': `${-3 - index * 0.7}%`,
-              } as React.CSSProperties}
-            />
-            {scene.nightSrc && <div
-              className="scene scene--night"
-              style={{
-                backgroundImage: `url(${scene.nightSrc})`,
-                opacity: 1 - timeOfDay.daylight,
-                '--drift': `${-3 - index * 0.7}%`,
-              } as React.CSSProperties}
-            />}
+            {SCENE_PHASES.map((phase) => {
+              const opacity = timeOfDay.weights[phase]
+              if (opacity === 0) return null
+              const hasDedicatedAsset = phase === 'day' || Boolean(scene[`${phase}Src` as keyof Scene])
+              return (
+                <div
+                  className={`scene scene--${phase} ${hasDedicatedAsset ? '' : `scene--fallback-${phase}`}`}
+                  key={phase}
+                  style={{
+                    backgroundImage: `url(${getSceneSrcForPhase(scene, phase)})`,
+                    opacity,
+                    '--drift': `${-3 - index * 0.7}%`,
+                  } as React.CSSProperties}
+                />
+              )
+            })}
           </div>
         ))}
         <div className="night-wash" style={{ opacity: (1 - timeOfDay.daylight) * 0.24 }} />
