@@ -35,21 +35,22 @@ interface Scene {
   station?: boolean
   daySrc: string
   dawnSrc?: string
+  afternoonSrc?: string
   goldenSrc?: string
   duskSrc?: string
   nightSrc?: string
 }
 
-type ScenePhase = 'night' | 'dawn' | 'day' | 'golden' | 'dusk'
-const SCENE_PHASES: ScenePhase[] = ['dawn', 'day', 'golden', 'dusk', 'night']
+type ScenePhase = 'night' | 'dawn' | 'day' | 'afternoon' | 'golden' | 'dusk'
+const SCENE_PHASES: ScenePhase[] = ['dawn', 'day', 'afternoon', 'golden', 'dusk', 'night']
 
 const scenes: Scene[] = [
-  { daySrc: '/scenes/milano-centrale-day.png', nightSrc: '/scenes/milano-centrale-night.png', label: 'Milano Centrale', detail: 'Platform 7 · Milano', at: 0, station: true },
-  { daySrc: '/scenes/milan-departure-day.jpg', goldenSrc: '/scenes/milan-departure-v2.webp', nightSrc: '/scenes/milan-departure-night.jpg', label: 'Leaving Milano', detail: 'Lombardy · IT', at: 0.055 },
-  { daySrc: '/scenes/alps-day.jpg', goldenSrc: '/scenes/alps.webp', nightSrc: '/scenes/alps-night.jpg', label: 'Crossing the Alps', detail: 'Val di Susa · IT', at: 0.31 },
-  { daySrc: '/scenes/france-countryside-day.jpg', goldenSrc: '/scenes/france-countryside.webp', nightSrc: '/scenes/france-countryside-night.jpg', label: 'French countryside', detail: 'Bourgogne · FR', at: 0.64 },
-  { daySrc: '/scenes/paris-arrival-day.jpg', goldenSrc: '/scenes/paris-arrival.webp', nightSrc: '/scenes/paris-arrival-night.jpg', label: 'Approaching Paris', detail: 'Île-de-France · FR', at: 0.87 },
-  { daySrc: '/scenes/paris-gare-de-lyon-day.png', nightSrc: '/scenes/paris-gare-de-lyon-night.png', label: 'Paris Gare de Lyon', detail: 'Arrival platform · Paris', at: 0.975, station: true },
+  { daySrc: '/scenes/milano-centrale-day.png', dawnSrc: '/scenes/milano-centrale-dawn.jpg', afternoonSrc: '/scenes/milano-centrale-afternoon.jpg', goldenSrc: '/scenes/milano-centrale-golden.jpg', duskSrc: '/scenes/milano-centrale-dusk.jpg', nightSrc: '/scenes/milano-centrale-night.png', label: 'Milano Centrale', detail: 'Platform 7 · Milano', at: 0, station: true },
+  { daySrc: '/scenes/milan-departure-day.jpg', dawnSrc: '/scenes/milan-departure-dawn.jpg', afternoonSrc: '/scenes/milan-departure-afternoon.jpg', goldenSrc: '/scenes/milan-departure-v2.webp', duskSrc: '/scenes/milan-departure-dusk.jpg', nightSrc: '/scenes/milan-departure-night.jpg', label: 'Leaving Milano', detail: 'Lombardy · IT', at: 0.055 },
+  { daySrc: '/scenes/alps-day.jpg', dawnSrc: '/scenes/alps-dawn.jpg', afternoonSrc: '/scenes/alps-afternoon.jpg', goldenSrc: '/scenes/alps.webp', duskSrc: '/scenes/alps-dusk.jpg', nightSrc: '/scenes/alps-night.jpg', label: 'Crossing the Alps', detail: 'Val di Susa · IT', at: 0.31 },
+  { daySrc: '/scenes/france-countryside-day.jpg', dawnSrc: '/scenes/france-countryside-dawn.jpg', afternoonSrc: '/scenes/france-countryside-afternoon.jpg', goldenSrc: '/scenes/france-countryside.webp', duskSrc: '/scenes/france-countryside-dusk.jpg', nightSrc: '/scenes/france-countryside-night.jpg', label: 'French countryside', detail: 'Bourgogne · FR', at: 0.64 },
+  { daySrc: '/scenes/paris-arrival-day.jpg', dawnSrc: '/scenes/paris-arrival-dawn.jpg', afternoonSrc: '/scenes/paris-arrival-afternoon.jpg', goldenSrc: '/scenes/paris-arrival.webp', duskSrc: '/scenes/paris-arrival-dusk.jpg', nightSrc: '/scenes/paris-arrival-night.jpg', label: 'Approaching Paris', detail: 'Île-de-France · FR', at: 0.87 },
+  { daySrc: '/scenes/paris-gare-de-lyon-day.png', dawnSrc: '/scenes/paris-gare-de-lyon-dawn.jpg', afternoonSrc: '/scenes/paris-gare-de-lyon-afternoon.jpg', goldenSrc: '/scenes/paris-gare-de-lyon-golden.jpg', duskSrc: '/scenes/paris-gare-de-lyon-dusk.jpg', nightSrc: '/scenes/paris-gare-de-lyon-night.png', label: 'Paris Gare de Lyon', detail: 'Arrival platform · Paris', at: 0.975, station: true },
 ]
 
 function sceneOpacity(progress: number, index: number) {
@@ -69,6 +70,7 @@ function clamp(value: number, min = 0, max = 1) {
 
 function getSceneSrcForPhase(scene: Scene, phase: ScenePhase): string {
   if (phase === 'dawn') return scene.dawnSrc || scene.daySrc
+  if (phase === 'afternoon') return scene.afternoonSrc || scene.daySrc
   if (phase === 'golden') return scene.goldenSrc || scene.daySrc
   if (phase === 'dusk') return scene.duskSrc || scene.daySrc
   if (phase === 'night') return scene.nightSrc || scene.daySrc
@@ -83,7 +85,7 @@ function getPreviewSceneSrc(scene: Scene, phase: ScenePhase): string {
 
 function getTimeOfDay(date: Date) {
   const hour = date.getHours() + date.getMinutes() / 60
-  const weights = { night: 0, dawn: 0, day: 0, golden: 0, dusk: 0 }
+  const weights = { night: 0, dawn: 0, day: 0, afternoon: 0, golden: 0, dusk: 0 }
 
   const blend = (from: keyof typeof weights, to: keyof typeof weights, start: number, end: number) => {
     const progress = clamp((hour - start) / (end - start))
@@ -95,8 +97,10 @@ function getTimeOfDay(date: Date) {
   else if (hour < 6) blend('night', 'dawn', 5, 6)
   else if (hour < 7.5) weights.dawn = 1
   else if (hour < 8.5) blend('dawn', 'day', 7.5, 8.5)
-  else if (hour < 16.5) weights.day = 1
-  else if (hour < 17.5) blend('day', 'golden', 16.5, 17.5)
+  else if (hour < 13.5) weights.day = 1
+  else if (hour < 14.5) blend('day', 'afternoon', 13.5, 14.5)
+  else if (hour < 16.5) weights.afternoon = 1
+  else if (hour < 17.5) blend('afternoon', 'golden', 16.5, 17.5)
   else if (hour < 19.75) weights.golden = 1
   else if (hour < 20.75) blend('golden', 'dusk', 19.75, 20.75)
   else if (hour < 22) weights.dusk = 1
@@ -104,8 +108,9 @@ function getTimeOfDay(date: Date) {
 
   const phases = [
     { name: 'night', label: 'NIGHT', track: 'Midnight carriage' },
-    { name: 'dawn', label: 'DAWN', track: 'First light over the rails' },
+    { name: 'dawn', label: 'EARLY MORNING', track: 'First light over the rails' },
     { name: 'day', label: 'DAYLIGHT', track: 'Window seat sketches' },
+    { name: 'afternoon', label: 'AFTERNOON', track: 'Afternoon miles' },
     { name: 'golden', label: 'GOLDEN HOUR', track: 'Sunset over Burgundy' },
     { name: 'dusk', label: 'BLUE HOUR', track: 'Evening express' }
   ] as const
@@ -113,8 +118,8 @@ function getTimeOfDay(date: Date) {
   const maxPhaseName = (Object.keys(weights) as Array<keyof typeof weights>).reduce((a, b) => weights[a] > weights[b] ? a : b)
   const activePhase = phases.find(p => p.name === maxPhaseName) || phases[0]
 
-  const daylight = weights.day + (weights.dawn + weights.golden) * 0.72 + weights.dusk * 0.32
-  const warmth = Math.max(weights.dawn * 0.52, weights.golden, weights.dusk * 0.28)
+  const daylight = weights.day + weights.afternoon * 0.9 + (weights.dawn + weights.golden) * 0.72 + weights.dusk * 0.32
+  const warmth = Math.max(weights.dawn * 0.52, weights.afternoon * 0.18, weights.golden, weights.dusk * 0.28)
 
   return {
     label: activePhase.label,

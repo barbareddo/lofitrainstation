@@ -9,6 +9,7 @@ button { font: inherit; }
 .scene-stage { position: absolute; inset: 0; transition: opacity 4s ease; }
 .scene { position: absolute; inset: -3%; background-size: cover; background-position: center; transform: scale(1.09); animation: scenery 36s linear infinite alternate; transition: opacity 1.2s ease; will-change: transform, opacity; }
 .scene--fallback-dawn { filter: brightness(0.68) saturate(0.85) sepia(0.12) hue-rotate(-8deg); }
+.scene--fallback-afternoon { filter: brightness(0.96) saturate(1.08) sepia(0.08); }
 .scene--fallback-golden { filter: brightness(0.88) saturate(1.22) sepia(0.24) hue-rotate(6deg); }
 .scene--fallback-dusk { filter: brightness(0.48) saturate(0.72) sepia(0.08) hue-rotate(-22deg); }
 .scene--fallback-night { filter: brightness(0.26) saturate(0.42) sepia(0.06) hue-rotate(-42deg); }
