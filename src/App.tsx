@@ -45,10 +45,10 @@ const SCENE_PHASES: ScenePhase[] = ['dawn', 'day', 'golden', 'dusk', 'night']
 
 const scenes: Scene[] = [
   { daySrc: '/scenes/milano-centrale-day.png', nightSrc: '/scenes/milano-centrale-night.png', label: 'Milano Centrale', detail: 'Platform 7 · Milano', at: 0, station: true },
-  { daySrc: '/scenes/milan-departure-day.avif', goldenSrc: '/scenes/milan-departure-v2.webp', nightSrc: '/scenes/milan-departure-night.avif', label: 'Leaving Milano', detail: 'Lombardy · IT', at: 0.055 },
-  { daySrc: '/scenes/alps-day.avif', goldenSrc: '/scenes/alps.webp', nightSrc: '/scenes/alps-night.avif', label: 'Crossing the Alps', detail: 'Val di Susa · IT', at: 0.31 },
-  { daySrc: '/scenes/france-countryside-day.avif', goldenSrc: '/scenes/france-countryside.webp', nightSrc: '/scenes/france-countryside-night.avif', label: 'French countryside', detail: 'Bourgogne · FR', at: 0.64 },
-  { daySrc: '/scenes/paris-arrival-day.avif', goldenSrc: '/scenes/paris-arrival.webp', nightSrc: '/scenes/paris-arrival-night.avif', label: 'Approaching Paris', detail: 'Île-de-France · FR', at: 0.87 },
+  { daySrc: '/scenes/milan-departure-day.jpg', goldenSrc: '/scenes/milan-departure-v2.webp', nightSrc: '/scenes/milan-departure-night.jpg', label: 'Leaving Milano', detail: 'Lombardy · IT', at: 0.055 },
+  { daySrc: '/scenes/alps-day.jpg', goldenSrc: '/scenes/alps.webp', nightSrc: '/scenes/alps-night.jpg', label: 'Crossing the Alps', detail: 'Val di Susa · IT', at: 0.31 },
+  { daySrc: '/scenes/france-countryside-day.jpg', goldenSrc: '/scenes/france-countryside.webp', nightSrc: '/scenes/france-countryside-night.jpg', label: 'French countryside', detail: 'Bourgogne · FR', at: 0.64 },
+  { daySrc: '/scenes/paris-arrival-day.jpg', goldenSrc: '/scenes/paris-arrival.webp', nightSrc: '/scenes/paris-arrival-night.jpg', label: 'Approaching Paris', detail: 'Île-de-France · FR', at: 0.87 },
   { daySrc: '/scenes/paris-gare-de-lyon-day.png', nightSrc: '/scenes/paris-gare-de-lyon-night.png', label: 'Paris Gare de Lyon', detail: 'Arrival platform · Paris', at: 0.975, station: true },
 ]
 
