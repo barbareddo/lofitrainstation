@@ -1,8 +1,12 @@
 type AudioEngine = {
   context: AudioContext
-  start: () => Promise<void>
+  startMusic: () => Promise<void>
+  pauseMusic: () => void
+  playDoorOpen: () => void
   stop: () => void
   setWindowOpen: (value: number) => void
+  setMusicVolume: (value: number) => void
+  setTrainVolume: (value: number) => void
 }
 
 export type AudioSource = 'radio' | 'fallback'
@@ -19,8 +23,15 @@ const NOTES = [
 export function createAudioEngine(onSourceChange?: (source: AudioSource) => void): AudioEngine {
   const context = new AudioContext()
   const master = context.createGain()
-  master.gain.value = 0.46
+  master.gain.value = 0.68
   master.connect(context.destination)
+
+  const musicBus = context.createGain()
+  const trainBus = context.createGain()
+  musicBus.gain.value = 0.62
+  trainBus.gain.value = 0.55
+  musicBus.connect(master)
+  trainBus.connect(master)
 
   // Lofi Cafe's official 24/7 Chilling stream. It is mixed through Web Audio
   // so the live station and our procedural train ambience share one control.
@@ -30,8 +41,8 @@ export function createAudioEngine(onSourceChange?: (source: AudioSource) => void
   radio.src = LOFI_STREAM_URL
   const radioSource = context.createMediaElementSource(radio)
   const radioGain = context.createGain()
-  radioGain.gain.value = 0.72
-  radioSource.connect(radioGain).connect(master)
+  radioGain.gain.value = 1
+  radioSource.connect(radioGain).connect(musicBus)
 
   // Track the window open state (0.0 to 1.0)
   let windowOpenVal = 0.0
@@ -42,7 +53,7 @@ export function createAudioEngine(onSourceChange?: (source: AudioSource) => void
   rumbleFilter.frequency.value = 180
   const rumbleGain = context.createGain()
   rumbleGain.gain.value = 0.18
-  rumbleFilter.connect(rumbleGain).connect(master)
+  rumbleFilter.connect(rumbleGain).connect(trainBus)
 
   // Wind sound (bandpass filtered noise simulation of rushing air)
   const windFilter = context.createBiquadFilter()
@@ -51,7 +62,7 @@ export function createAudioEngine(onSourceChange?: (source: AudioSource) => void
   windFilter.Q.value = 1.2
   const windGain = context.createGain()
   windGain.gain.value = 0.0 // starts fully silent when window is closed
-  windFilter.connect(windGain).connect(master)
+  windFilter.connect(windGain).connect(trainBus)
 
   // White noise buffer for both rumble and wind
   const buffer = context.createBuffer(1, context.sampleRate * 2, context.sampleRate)
@@ -71,7 +82,7 @@ export function createAudioEngine(onSourceChange?: (source: AudioSource) => void
   lowOsc.type = 'sine'
   lowOsc.frequency.value = 42
   lowGain.gain.value = 0.09
-  lowOsc.connect(lowGain).connect(master)
+  lowOsc.connect(lowGain).connect(trainBus)
   lowOsc.start()
 
   // Procedural door opening sound (latch release click followed by sliding door whoosh)
@@ -88,7 +99,7 @@ export function createAudioEngine(onSourceChange?: (source: AudioSource) => void
     latchGain.gain.setValueAtTime(0.04, now)
     latchGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.08)
     
-    latchOsc.connect(latchGain).connect(master)
+    latchOsc.connect(latchGain).connect(trainBus)
     latchOsc.start(now)
     latchOsc.stop(now + 0.09)
     
@@ -105,7 +116,7 @@ export function createAudioEngine(onSourceChange?: (source: AudioSource) => void
     swooshGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.9)
     
     noise.connect(swooshFilter)
-    swooshFilter.connect(swooshGain).connect(master)
+    swooshFilter.connect(swooshGain).connect(trainBus)
   }
 
   let chord = 0
@@ -122,7 +133,7 @@ export function createAudioEngine(onSourceChange?: (source: AudioSource) => void
       gain.gain.setValueAtTime(0.0001, now)
       gain.gain.exponentialRampToValueAtTime(0.028, now + 0.7)
       gain.gain.exponentialRampToValueAtTime(0.0001, now + 6.8)
-      osc.connect(filter).connect(gain).connect(master)
+      osc.connect(filter).connect(gain).connect(musicBus)
       osc.start(now)
       osc.stop(now + 7)
     })
@@ -140,7 +151,7 @@ export function createAudioEngine(onSourceChange?: (source: AudioSource) => void
     // Clicks are louder when window is open
     gain.gain.setValueAtTime(0.032 + windowOpenVal * 0.048, now)
     gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.09 + windowOpenVal * 0.03)
-    osc.connect(gain).connect(master)
+    osc.connect(gain).connect(trainBus)
     osc.start(now)
     osc.stop(now + 0.15)
   }
@@ -148,6 +159,7 @@ export function createAudioEngine(onSourceChange?: (source: AudioSource) => void
   let chordTimer: number | null = null
   let reconnectTimer: number | null = null
   let stopped = false
+  let musicPaused = true
 
   const stopFallback = () => {
     if (chordTimer !== null) window.clearInterval(chordTimer)
@@ -162,7 +174,7 @@ export function createAudioEngine(onSourceChange?: (source: AudioSource) => void
   }
 
   const scheduleReconnect = () => {
-    if (stopped || reconnectTimer !== null) return
+    if (stopped || musicPaused || reconnectTimer !== null) return
     reconnectTimer = window.setTimeout(async () => {
       reconnectTimer = null
       try {
@@ -175,15 +187,16 @@ export function createAudioEngine(onSourceChange?: (source: AudioSource) => void
   }
 
   radio.addEventListener('playing', () => {
+    if (musicPaused) return
     stopFallback()
     onSourceChange?.('radio')
   })
   radio.addEventListener('error', () => {
+    if (musicPaused) return
     startFallback()
     scheduleReconnect()
   })
 
-  playDoorOpenSound()
   const railTimer = window.setInterval(railClick, 560)
 
   // Dynamic wind speed modulation (gusts)
@@ -200,8 +213,10 @@ export function createAudioEngine(onSourceChange?: (source: AudioSource) => void
 
   return {
     context,
-    start: async () => {
+    startMusic: async () => {
+      musicPaused = false
       try {
+        radio.load()
         await radio.play()
         onSourceChange?.('radio')
       } catch {
@@ -209,8 +224,17 @@ export function createAudioEngine(onSourceChange?: (source: AudioSource) => void
         scheduleReconnect()
       }
     },
+    pauseMusic: () => {
+      musicPaused = true
+      radio.pause()
+      stopFallback()
+      if (reconnectTimer !== null) window.clearTimeout(reconnectTimer)
+      reconnectTimer = null
+    },
+    playDoorOpen: playDoorOpenSound,
     stop: () => {
       stopped = true
+      musicPaused = true
       stopFallback()
       if (reconnectTimer !== null) window.clearTimeout(reconnectTimer)
       window.clearInterval(railTimer)
@@ -231,7 +255,7 @@ export function createAudioEngine(onSourceChange?: (source: AudioSource) => void
       rumbleGain.gain.setTargetAtTime(rumbleVol, now, 0.1)
 
       // The carriage radio recedes slightly as outside air becomes louder.
-      radioGain.gain.setTargetAtTime(0.72 - value * 0.12, now, 0.18)
+      radioGain.gain.setTargetAtTime(1 - value * 0.16, now, 0.18)
 
       // Set base wind volume
       if (value <= 0.05) {
@@ -239,6 +263,12 @@ export function createAudioEngine(onSourceChange?: (source: AudioSource) => void
       } else {
         windGain.gain.setTargetAtTime(value * 0.045, now, 0.1)
       }
-    }
+    },
+    setMusicVolume: (value: number) => {
+      musicBus.gain.setTargetAtTime(Math.min(1, Math.max(0, value)), context.currentTime, 0.08)
+    },
+    setTrainVolume: (value: number) => {
+      trainBus.gain.setTargetAtTime(Math.min(1, Math.max(0, value)), context.currentTime, 0.08)
+    },
   }
 }

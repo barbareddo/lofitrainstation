@@ -7,14 +7,26 @@ import Pause from 'lucide-react/dist/esm/icons/pause.mjs'
 import Play from 'lucide-react/dist/esm/icons/play.mjs'
 import Radio from 'lucide-react/dist/esm/icons/radio.mjs'
 import Route from 'lucide-react/dist/esm/icons/route.mjs'
-import Volume2 from 'lucide-react/dist/esm/icons/volume-2.mjs'
-import VolumeX from 'lucide-react/dist/esm/icons/volume-x.mjs'
+import SlidersHorizontal from 'lucide-react/dist/esm/icons/sliders-horizontal.mjs'
 import { createAudioEngine, type AudioSource } from './audio'
 
 const TRAVEL_MS = 4 * 60 * 60 * 1000
 const STOP_MS = 8 * 60 * 1000
 const CYCLE_MS = TRAVEL_MS + STOP_MS
 const EPOCH = new Date('2026-07-15T05:30:00+02:00').getTime()
+const MUSIC_VOLUME_KEY = 'nightline.musicVolume'
+const TRAIN_VOLUME_KEY = 'nightline.trainVolume'
+
+function loadVolume(key: string, fallback: number) {
+  try {
+    const storedValue = window.localStorage.getItem(key)
+    if (storedValue === null) return fallback
+    const value = Number(storedValue)
+    return Number.isFinite(value) && value >= 0 && value <= 100 ? value : fallback
+  } catch {
+    return fallback
+  }
+}
 
 const scenes = [
   { src: '/scenes/milano-centrale-day.png', nightSrc: '/scenes/milano-centrale-night.png', label: 'Milano Centrale', detail: 'Platform 7 · Milano', at: 0, station: true },
@@ -65,7 +77,11 @@ function App() {
   const [playing, setPlaying] = useState(false)
   const [audioSource, setAudioSource] = useState<AudioSource>('radio')
   const [showJourney, setShowJourney] = useState(false)
+  const [showMixer, setShowMixer] = useState(false)
+  const [musicVolume, setMusicVolume] = useState(() => loadVolume(MUSIC_VOLUME_KEY, 62))
+  const [trainVolume, setTrainVolume] = useState(() => loadVolume(TRAIN_VOLUME_KEY, 55))
   const audio = useRef<ReturnType<typeof createAudioEngine> | null>(null)
+  const musicFadeTimer = useRef<number | null>(null)
   
   // Landing screen vestibule states
   const [entered, setEntered] = useState(false)
@@ -92,14 +108,27 @@ function App() {
     return () => window.clearInterval(timer)
   }, [])
 
-  useEffect(() => () => audio.current?.stop(), [])
+  useEffect(() => () => {
+    if (musicFadeTimer.current !== null) window.clearTimeout(musicFadeTimer.current)
+    audio.current?.stop()
+  }, [])
+
+  useEffect(() => {
+    audio.current?.setMusicVolume(musicVolume / 100)
+    try { window.localStorage.setItem(MUSIC_VOLUME_KEY, String(musicVolume)) } catch { /* storage unavailable */ }
+  }, [musicVolume])
+
+  useEffect(() => {
+    audio.current?.setTrainVolume(trainVolume / 100)
+    try { window.localStorage.setItem(TRAIN_VOLUME_KEY, String(trainVolume)) } catch { /* storage unavailable */ }
+  }, [trainVolume])
 
   // Keep audio engine synchronized with windowOpen state changes
   useEffect(() => {
-    if (playing && audio.current) {
+    if (audio.current) {
       audio.current.setWindowOpen(windowOpen / 100)
     }
-  }, [windowOpen, playing])
+  }, [windowOpen])
 
   // Window drag / toggle click handlers
   const handleWindowPointerDown = (e: React.PointerEvent) => {
@@ -181,22 +210,28 @@ function App() {
   const timeOfDay = useMemo(() => getTimeOfDay(new Date(now)), [now])
   const localTime = new Date(now).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 
-  const startAudio = async () => {
-    const engine = createAudioEngine(setAudioSource)
-    audio.current = engine
-    await engine.context.resume()
-    engine.setWindowOpen(windowOpen / 100)
-    await engine.start()
-    setPlaying(true)
+  const ensureAudio = async () => {
+    let engine = audio.current
+    if (!engine) {
+      engine = createAudioEngine(setAudioSource)
+      audio.current = engine
+      engine.setMusicVolume(musicVolume / 100)
+      engine.setTrainVolume(trainVolume / 100)
+      engine.setWindowOpen(windowOpen / 100)
+    }
+    if (engine.context.state === 'suspended') await engine.context.resume()
+    return engine
   }
 
-  const toggleAudio = async () => {
+  const toggleMusic = async () => {
     if (playing) {
-      audio.current?.stop()
-      audio.current = null
+      audio.current?.pauseMusic()
       setPlaying(false)
     } else {
-      await startAudio()
+      const engine = await ensureAudio()
+      engine.setMusicVolume(musicVolume / 100)
+      await engine.startMusic()
+      setPlaying(true)
     }
   }
 
@@ -210,10 +245,20 @@ function App() {
     if (entering || entered) return
     setEntering(true)
     setEntryProgress(1)
-    
-    // Auto start procedural music context
+
+    const engine = await ensureAudio()
+    engine.playDoorOpen()
+
+    // Begin the stream during the user's gesture, but keep it silent until
+    // the door has visually opened. This respects browser autoplay rules.
     if (!playing) {
-      await startAudio()
+      engine.setMusicVolume(0)
+      await engine.startMusic()
+      setPlaying(true)
+      if (musicFadeTimer.current !== null) window.clearTimeout(musicFadeTimer.current)
+      musicFadeTimer.current = window.setTimeout(() => {
+        engine.setMusicVolume(musicVolume / 100)
+      }, 1200)
     }
     
     // Match CSS transition timing (1.4s) before unmounting overlay
@@ -224,6 +269,9 @@ function App() {
 
   const handleEntryPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (entering) return
+    // Browsers require a user gesture before audio can start. From the first
+    // touch or drag, the vestibule plays train ambience only.
+    void ensureAudio()
     entryDragStartX.current = e.clientX
     entryDragStartProgress.current = entryProgress
     entryDragged.current = false
@@ -277,7 +325,7 @@ function App() {
             onKeyDown={handleEntryKeyDown}
             role="button"
             tabIndex={0}
-            aria-label="Trascina la porta verso destra per entrare nella cabina"
+            aria-label="Slide the door to the right to enter the carriage"
           >
             <div className="cabin-glimpse" aria-hidden="true">
               <div className="glimpse-landscape" style={{ backgroundImage: `url(${journey.scene.src})` }} />
@@ -290,9 +338,9 @@ function App() {
             <div className="door-shadow" aria-hidden="true" />
           </div>
           <div className="door-prompt">
-            <small>CARROZZA 07 · NIGHTLINE</small>
-            <strong><span>→</span> TRASCINA LA PORTA PER ENTRARE</strong>
-            <em>oppure tocca per aprire</em>
+            <small>COACH 07 · NIGHTLINE</small>
+            <strong><span>→</span> SLIDE THE DOOR TO ENTER</strong>
+            <em>or tap to open</em>
           </div>
         </div>
       )}
@@ -407,14 +455,26 @@ function App() {
           <span>{audioSource === 'radio' ? <><a href="https://loficafe.net/chilling" target="_blank" rel="noreferrer">Lofi Cafe</a> · Train ambience</> : 'Original generative fallback · 72 BPM'}</span>
         </div>
         <div className="wave" aria-hidden="true">{Array.from({ length: 18 }, (_, i) => <i key={i} style={{ '--i': i } as React.CSSProperties} />)}</div>
-        <button className="play" onClick={toggleAudio} aria-label={playing ? 'Pause radio' : 'Play radio'}>
+        <button className="play" onClick={toggleMusic} aria-label={playing ? 'Pause radio' : 'Play radio'}>
           {playing ? <Pause fill="currentColor" size={21} /> : <Play fill="currentColor" size={21} />}
         </button>
       </section>
 
+      <section className={`sound-mixer ${showMixer ? 'sound-mixer--open' : ''}`} aria-label="Sound mixer" aria-hidden={!showMixer}>
+        <div className="mixer-heading"><span>YOUR SOUND MIX</span><b>Saved automatically</b></div>
+        <label>
+          <span><b>Music</b><em>{musicVolume}%</em></span>
+          <input aria-label="Music volume" type="range" min="0" max="100" value={musicVolume} onChange={(event) => setMusicVolume(Number(event.target.value))} />
+        </label>
+        <label>
+          <span><b>Train ambience</b><em>{trainVolume}%</em></span>
+          <input aria-label="Train ambience volume" type="range" min="0" max="100" value={trainVolume} onChange={(event) => setTrainVolume(Number(event.target.value))} />
+        </label>
+      </section>
+
       <div className="bottom-actions">
         <button className="journey-button" onClick={() => setShowJourney((value) => !value)}><Route size={17} /> View journey</button>
-        <button className="sound-button" onClick={toggleAudio}>{playing ? <Volume2 size={18} /> : <VolumeX size={18} />}</button>
+        <button className={`sound-button ${showMixer ? 'sound-button--active' : ''}`} onClick={() => setShowMixer((value) => !value)} aria-label="Open sound mixer" aria-expanded={showMixer}><SlidersHorizontal size={18} /></button>
       </div>
 
       <aside className={`journey-panel ${showJourney ? 'journey-panel--open' : ''}`}>
