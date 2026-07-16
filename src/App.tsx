@@ -399,6 +399,7 @@ function App() {
               <div className="glimpse-light" />
             </div>
             <div className="sliding-door" aria-hidden="true">
+              <div className="door-wood" />
               <div className="door-reflection" />
             </div>
             <div className="door-shadow" aria-hidden="true" />
