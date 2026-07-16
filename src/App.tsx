@@ -276,6 +276,15 @@ function App() {
   const timeOfDay = useMemo(() => getTimeOfDay(new Date(now)), [now])
   const localTime = new Date(now).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 
+  // Analog clock hands calculations
+  const timeDate = new Date(now)
+  const hours = timeDate.getHours()
+  const minutes = timeDate.getMinutes()
+  const seconds = timeDate.getSeconds()
+  const hourDeg = (hours % 12) * 30 + minutes * 0.5
+  const minuteDeg = minutes * 6 + seconds * 0.1
+  const secondDeg = seconds * 6
+
   const ensureAudio = async () => {
     let engine = audio.current
     if (!engine) {
@@ -453,6 +462,37 @@ function App() {
       <div className="carriage-wrapper">
         <img className="carriage" src="/train-carriage.webp" alt="Cozy train compartment looking onto the journey" />
         
+        {/* Wall Mounted Retro-Modern Screen */}
+        <section className="trip-card trip-card--wall">
+          <div className="eyebrow">{journey.stopped ? 'NOW AT PLATFORM' : 'CURRENT JOURNEY'}</div>
+          <div className="route-title">
+            <div><strong>MIL</strong><span>Milano</span></div>
+            <div className="route-line"><i /><Route size={18} /><i /></div>
+            <div className="align-right"><strong>PAR</strong><span>Paris</span></div>
+          </div>
+          <div className="progress-track"><span style={{ width: `${journey.progress * 100}%` }}><i /></span></div>
+          <div className="trip-meta">
+            <div><MapPin size={15} /><span><small>NOW PASSING</small>{journey.scene.detail}</span></div>
+            <div className="align-right"><small>{journey.stopped ? 'DEPARTING AGAIN' : 'ARRIVAL'}</small><b>{journey.stopped ? formatDuration(journey.remaining) : journey.arrival.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</b></div>
+          </div>
+        </section>
+        
+        {/* Vintage Analog Wall Clock */}
+        <div className="analog-clock">
+          <div className="clock-dial">
+            <div className="clock-hand clock-hand--hour" style={{ transform: `rotate(${hourDeg}deg)` }} />
+            <div className="clock-hand clock-hand--minute" style={{ transform: `rotate(${minuteDeg}deg)` }} />
+            <div className="clock-hand clock-hand--second" style={{ transform: `rotate(${secondDeg}deg)` }} />
+            <div className="clock-center-pin" />
+            <div className="clock-markers">
+              <span className="marker-12" />
+              <span className="marker-3" />
+              <span className="marker-6" />
+              <span className="marker-9" />
+            </div>
+          </div>
+        </div>
+        
         {/* Sliding Window Glass Overlay */}
         <div className="window-container">
           <div
@@ -500,7 +540,7 @@ function App() {
         </div>
       </header>
 
-      <section className="trip-card">
+      <section className="trip-card trip-card--floating">
         <div className="eyebrow">{journey.stopped ? 'NOW AT PLATFORM' : 'CURRENT JOURNEY'}</div>
         <div className="route-title">
           <div><strong>MIL</strong><span>Milano</span></div>

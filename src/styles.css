@@ -7,7 +7,20 @@ button { font: inherit; }
 .station { position: relative; width: 100vw; height: 100svh; min-height: 620px; overflow: hidden; background: #172027; isolation: isolate; }
 .world { position: absolute; inset: 0; z-index: -3; overflow: hidden; background: #607584; }
 .scene-stage { position: absolute; inset: 0; transition: opacity 4s ease; }
-.scene { position: absolute; inset: -3%; background-size: cover; background-position: center; transform: scale(1.09); animation: scenery 36s linear infinite alternate; transition: opacity 1.2s ease; will-change: transform, opacity; }
+.scene {
+  position: absolute;
+  top: -7.5%;
+  bottom: -7.5%;
+  left: -7.5%;
+  width: calc(115vh * 2.5006);
+  min-width: 115vw;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  animation: scenery 36s linear infinite alternate;
+  transition: opacity 1.2s ease;
+  will-change: transform, opacity;
+}
 .scene--fallback-dawn { filter: brightness(0.68) saturate(0.85) sepia(0.12) hue-rotate(-8deg); }
 .scene--fallback-afternoon { filter: brightness(0.96) saturate(1.08) sepia(0.08); }
 .scene--fallback-golden { filter: brightness(0.88) saturate(1.22) sepia(0.24) hue-rotate(6deg); }
@@ -169,7 +182,14 @@ button { font: inherit; }
 }
 .vignette { position: absolute; inset: 0; z-index: -1; pointer-events: none; background: radial-gradient(circle at 50% 38%, transparent 18%, rgba(5,8,10,.08) 52%, rgba(3,5,7,.52) 100%); }
 .grain { position: absolute; inset: -40%; z-index: 0; opacity: .055; pointer-events: none; background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.8'/%3E%3C/svg%3E"); animation: grain .25s steps(2) infinite; }
-@keyframes scenery { from { transform: scale(1.09) translateX(1.8%); } to { transform: scale(1.09) translateX(var(--drift)); } }
+@keyframes scenery {
+  from {
+    transform: translateX(38.19vw);
+  }
+  to {
+    transform: translateX(calc(79.55vw - 100%));
+  }
+}
 @keyframes rush { to { transform: translateX(-48px); } }
 @keyframes grain { 0% { transform: translate(0,0) } 25% { transform: translate(2%,-3%) } 50% { transform: translate(-3%,2%) } 75% { transform: translate(3%,3%) } }
 
@@ -203,6 +223,328 @@ button { font: inherit; }
 .trip-meta > div:first-child { display: flex; align-items: center; gap: 8px; }
 .trip-meta small, .track-copy small, .next-route small { display: block; margin-bottom: 4px; font-family: 'DM Mono'; font-size: 8px; letter-spacing: .14em; color: rgba(255,255,255,.42); }
 .trip-meta b { font-family: 'DM Mono'; font-size: 13px; font-weight: 500; }
+
+/* Wall Monitor vs Floating Card display rules */
+.trip-card--floating {
+  display: block;
+}
+.trip-card--wall {
+  display: none;
+}
+.analog-clock {
+  display: none;
+}
+
+@media (min-width: 901px) {
+  .trip-card--floating {
+    display: none;
+  }
+  
+  /* Hide the digital time badge in the topbar on desktop since we have the analog clock */
+  .time-badge {
+    display: none;
+  }
+
+  .trip-card--wall {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    position: absolute;
+    left: 78.25%;
+    top: 17%;
+    width: 13.5%;
+    height: 15%;
+    z-index: 3;
+    pointer-events: auto;
+    
+    /* 3D Mahogany Wood + Brass Bezel Frame */
+    box-sizing: border-box;
+    padding: 10px 14px 12px;
+    background: #0b0d0f; /* dark deep screen */
+    border: 2px solid #361708; /* wood bezel */
+    border-radius: 12px;
+    box-shadow: 
+      inset 0 0 16px rgba(0,0,0,0.95), /* recessed screen shadow */
+      inset 0 2px 2px rgba(255,255,255,0.15), /* highlight top wooden bezel */
+      inset 0 -2px 2px rgba(0,0,0,0.7), /* shadow bottom wooden bezel */
+      inset 0 0 0 3px #b89053, /* brass bezel */
+      inset 0 0 0 4px #8c6832, /* dark brass edge */
+      0 8px 24px rgba(0,0,0,0.85), /* drop shadow on wooden wall */
+      0 2px 4px rgba(0,0,0,0.5);
+  }
+
+  /* Bring text/icons in front of the screen glass and scanline overlays */
+  .trip-card--wall > * {
+    position: relative;
+    z-index: 6;
+  }
+
+  /* Screen glass reflection overlay */
+  .trip-card--wall::after {
+    content: '';
+    position: absolute;
+    inset: 4px;
+    border-radius: 8px;
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.04) 0%, rgba(255, 255, 255, 0.01) 40%, transparent 40.1%, transparent 100%);
+    pointer-events: none;
+    z-index: 5;
+  }
+
+  /* Scanlines and screen grain overlay */
+  .trip-card--wall::before {
+    content: '';
+    position: absolute;
+    inset: 4px;
+    border-radius: 8px;
+    background: 
+      linear-gradient(rgba(15, 19, 21, 0) 50%, rgba(212, 170, 112, 0.045) 50%),
+      linear-gradient(90deg, rgba(255, 0, 0, 0.02), rgba(0, 255, 0, 0.01), rgba(0, 0, 255, 0.02));
+    background-size: 100% 3px, 9px 100%;
+    pointer-events: none;
+    z-index: 4;
+    opacity: 0.9;
+  }
+
+  .trip-card--wall .eyebrow {
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 0.18em;
+    color: #e0b778;
+    text-shadow: 0 0 8px rgba(224, 183, 120, 0.6);
+    margin: 0;
+    text-align: center;
+  }
+
+  .trip-card--wall .route-title {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    gap: 10px;
+    margin-top: 2px;
+  }
+
+  .trip-card--wall .route-title strong {
+    display: block;
+    font-size: 26px;
+    font-weight: 600;
+    line-height: 1;
+    letter-spacing: -0.04em;
+    color: #fff;
+    text-shadow: 0 0 10px rgba(255, 255, 255, 0.4);
+  }
+
+  .trip-card--wall .route-title span {
+    display: block;
+    margin-top: 3px;
+    font-size: 10px;
+    color: rgba(255, 255, 255, 0.5);
+    text-align: center;
+  }
+
+  .trip-card--wall .route-line {
+    display: flex;
+    align-items: center;
+    color: #e0b778;
+  }
+
+  .trip-card--wall .route-line i {
+    height: 1px;
+    flex: 1;
+    background: rgba(224, 183, 120, 0.35);
+  }
+
+  .trip-card--wall .route-line svg {
+    width: 16px;
+    height: 16px;
+    margin: 0 4px;
+    filter: drop-shadow(0 0 6px rgba(224, 183, 120, 0.7));
+  }
+
+  .trip-card--wall .progress-track {
+    height: 2px;
+    margin: 6px 0;
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 1px;
+  }
+
+  .trip-card--wall .progress-track > span {
+    position: relative;
+    display: block;
+    height: 100%;
+    background: #e0b778;
+    box-shadow: 0 0 8px rgba(224, 183, 120, 0.9);
+  }
+
+  .trip-card--wall .progress-track i {
+    position: absolute;
+    top: 50%;
+    right: -3px;
+    width: 6px;
+    height: 6px;
+    transform: translateY(-50%);
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 0 8px #fff;
+    border: 1px solid #e0b778;
+  }
+
+  .trip-card--wall .trip-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    font-size: 11px;
+    margin-top: 4px;
+  }
+
+  .trip-card--wall .trip-meta > div:first-child {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .trip-card--wall .trip-meta svg {
+    width: 13px;
+    height: 13px;
+    color: #e0b778;
+    filter: drop-shadow(0 0 6px rgba(224, 183, 120, 0.7));
+  }
+
+  .trip-card--wall .trip-meta span {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .trip-card--wall .trip-meta small {
+    display: block;
+    margin-bottom: 2px;
+    font-family: 'DM Mono', monospace;
+    font-size: 8px;
+    letter-spacing: 0.1em;
+    color: rgba(255, 255, 255, 0.4);
+  }
+
+  .trip-card--wall .trip-meta b {
+    font-family: 'DM Mono', monospace;
+    font-size: 12px;
+    font-weight: 500;
+    color: #fff;
+    text-shadow: 0 0 8px rgba(255, 255, 255, 0.4);
+  }
+
+  /* Vintage Analog Wall Clock */
+  .analog-clock {
+    display: block;
+    position: absolute;
+    left: 8.5%;
+    top: 13.5%;
+    width: 7.5%;
+    height: 13.3%;
+    z-index: 3;
+    pointer-events: auto;
+    
+    /* Mahogany wood frame + brass bezel matching the screen */
+    background: #f1ebd9; /* warm ivory dial */
+    border: 10px solid #361708; /* wood border */
+    border-radius: 50%;
+    box-sizing: border-box;
+    box-shadow:
+      inset 0 0 8px rgba(0, 0, 0, 0.35), /* dial depth */
+      inset 0 0 0 2px #b89053, /* brass bezel */
+      inset 0 0 0 3px #8c6832,
+      0 8px 20px rgba(0, 0, 0, 0.75), /* shadow on wood wall */
+      0 2px 4px rgba(0, 0, 0, 0.4);
+  }
+
+  /* Glass glare reflection on the clock face */
+  .analog-clock::after {
+    content: '';
+    position: absolute;
+    inset: 4px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0.02) 45%, transparent 45.1%, transparent 100%);
+    pointer-events: none;
+    z-index: 5;
+  }
+
+  .clock-dial {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+  }
+
+  /* Clock hands */
+  .clock-hand {
+    position: absolute;
+    bottom: 50%;
+    left: 50%;
+    transform-origin: bottom center;
+    border-radius: 2px;
+    z-index: 3;
+  }
+
+  .clock-hand--hour {
+    width: 4px;
+    height: 26%;
+    background: #1e1d1a;
+    margin-left: -2px;
+  }
+
+  .clock-hand--minute {
+    width: 2px;
+    height: 38%;
+    background: #2a2824;
+    margin-left: -1px;
+  }
+
+  .clock-hand--second {
+    width: 1px;
+    height: 42%;
+    background: #a83d31; /* elegant red second hand */
+    margin-left: -0.5px;
+    z-index: 4;
+  }
+
+  /* Clock center pin */
+  .clock-center-pin {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 8px;
+    height: 8px;
+    background: #b89053; /* brass center pin */
+    border: 1px solid #1e1d1a;
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 5;
+  }
+
+  /* Clock face markers (12, 3, 6, 9) */
+  .clock-markers span {
+    position: absolute;
+    background: #36322b;
+  }
+
+  .clock-markers .marker-12, .clock-markers .marker-6 {
+    width: 2px;
+    height: 10px;
+    left: 50%;
+    margin-left: -1px;
+  }
+  .clock-markers .marker-12 { top: 6px; }
+  .clock-markers .marker-6 { bottom: 6px; }
+
+  .clock-markers .marker-3, .clock-markers .marker-9 {
+    width: 10px;
+    height: 2px;
+    top: 50%;
+    margin-top: -1px;
+  }
+  .clock-markers .marker-3 { right: 6px; }
+  .clock-markers .marker-9 { left: 6px; }
+}
+
 
 .now-playing { position: absolute; z-index: 2; left: 50%; bottom: 25px; width: min(500px, calc(100vw - 38px)); min-height: 72px; transform: translateX(-50%); display: grid; grid-template-columns: 44px minmax(140px,1fr) 100px 48px; align-items: center; gap: 13px; padding: 11px 12px; border: 1px solid rgba(255,255,255,.14); border-radius: 18px; background: rgba(8,12,14,.72); box-shadow: 0 18px 50px rgba(0,0,0,.35); backdrop-filter: blur(20px); }
 .cover { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 11px; color: #e6bf82; background: linear-gradient(135deg, #2c3838, #12191b); }
