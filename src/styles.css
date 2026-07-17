@@ -746,6 +746,40 @@ button { font: inherit; }
 .next-route b { font-size: 12px; }
 .next-route span { margin-top: 3px; font-size: 9px; color: rgba(255,255,255,.38); }
 
+.route-selector {
+  display: flex;
+  gap: 6px;
+  background: rgba(0, 0, 0, 0.32);
+  padding: 4px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  margin-bottom: 22px;
+}
+.route-selector__btn {
+  flex: 1;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 8px 10px;
+  color: rgba(255, 255, 255, 0.45);
+  font-family: inherit;
+  font-size: 10px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  text-align: center;
+}
+.route-selector__btn:hover {
+  color: rgba(255, 255, 255, 0.85);
+  background: rgba(255, 255, 255, 0.03);
+}
+.route-selector__btn--active {
+  background: rgba(229, 189, 128, 0.12);
+  color: #e5bd80;
+  border: 1px solid rgba(229, 189, 128, 0.2);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.16);
+}
+
 @media (max-width: 820px) {
   .station { min-height: 560px; }
   .trip-card { top: 16%; left: 18px; width: 300px; }

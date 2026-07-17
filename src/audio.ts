@@ -7,6 +7,7 @@ type AudioEngine = {
   setWindowOpen: (value: number) => void
   setMusicVolume: (value: number) => void
   setTrainVolume: (value: number) => void
+  setTrainMoving: (moving: boolean) => void
 }
 
 export type AudioSource = 'radio' | 'fallback'
@@ -46,6 +47,7 @@ export function createAudioEngine(onSourceChange?: (source: AudioSource) => void
 
   // Track the window open state (0.0 to 1.0)
   let windowOpenVal = 0.0
+  let trainMoving = true
 
   // Rumble sound (lowpass filtered noise simulation of wheels on track)
   const rumbleFilter = context.createBiquadFilter()
@@ -142,6 +144,7 @@ export function createAudioEngine(onSourceChange?: (source: AudioSource) => void
 
   // Rail clicks are modulated dynamically by window state
   const railClick = () => {
+    if (!trainMoving) return
     const now = context.currentTime
     const osc = context.createOscillator()
     const gain = context.createGain()
@@ -204,8 +207,12 @@ export function createAudioEngine(onSourceChange?: (source: AudioSource) => void
     if (windowOpenVal > 0.05) {
       const now = context.currentTime
       // Fluctuate wind volume and pitch slightly to simulate wind gusts
-      const targetFreq = 300 + windowOpenVal * 280 + Math.sin(now * 1.6) * 70
-      const targetGain = windowOpenVal * (0.045 + Math.cos(now * 2.1) * 0.015)
+      const targetFreq = trainMoving
+        ? (300 + windowOpenVal * 280 + Math.sin(now * 1.6) * 70)
+        : (200 + windowOpenVal * 80 + Math.sin(now * 0.8) * 20)
+      const targetGain = trainMoving
+        ? (windowOpenVal * (0.045 + Math.cos(now * 2.1) * 0.015))
+        : (windowOpenVal * 0.005 + Math.cos(now * 0.8) * 0.002)
       windFilter.frequency.setTargetAtTime(targetFreq, now, 0.15)
       windGain.gain.setTargetAtTime(targetGain, now, 0.15)
     }
@@ -249,8 +256,9 @@ export function createAudioEngine(onSourceChange?: (source: AudioSource) => void
       const now = context.currentTime
       
       // Muffle/unmuffle rumble. Goes from a deep 180Hz filter up to a brighter 680Hz filter.
-      const rumbleFreq = 180 + value * 500
-      const rumbleVol = 0.18 + value * 0.12
+      const baseRumble = trainMoving ? 0.18 : 0.02
+      const rumbleFreq = (trainMoving ? 180 : 120) + value * (trainMoving ? 500 : 80)
+      const rumbleVol = baseRumble + value * (trainMoving ? 0.12 : 0.01)
       rumbleFilter.frequency.setTargetAtTime(rumbleFreq, now, 0.1)
       rumbleGain.gain.setTargetAtTime(rumbleVol, now, 0.1)
 
@@ -261,7 +269,24 @@ export function createAudioEngine(onSourceChange?: (source: AudioSource) => void
       if (value <= 0.05) {
         windGain.gain.setTargetAtTime(0.0, now, 0.1)
       } else {
-        windGain.gain.setTargetAtTime(value * 0.045, now, 0.1)
+        const baseWind = trainMoving ? value * 0.045 : value * 0.005
+        windGain.gain.setTargetAtTime(baseWind, now, 0.1)
+      }
+    },
+    setTrainMoving: (moving: boolean) => {
+      trainMoving = moving
+      const now = context.currentTime
+      
+      const baseRumble = moving ? 0.18 : 0.02
+      const rumbleFreq = (moving ? 180 : 120) + windowOpenVal * (moving ? 500 : 80)
+      const rumbleVol = baseRumble + windowOpenVal * (moving ? 0.12 : 0.01)
+      
+      rumbleFilter.frequency.setTargetAtTime(rumbleFreq, now, 0.15)
+      rumbleGain.gain.setTargetAtTime(rumbleVol, now, 0.15)
+      
+      if (windowOpenVal > 0.05) {
+        const baseWind = moving ? windowOpenVal * 0.045 : windowOpenVal * 0.005
+        windGain.gain.setTargetAtTime(baseWind, now, 0.15)
       }
     },
     setMusicVolume: (value: number) => {

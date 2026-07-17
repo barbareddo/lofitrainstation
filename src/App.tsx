@@ -14,7 +14,7 @@ import { createAudioEngine, type AudioSource } from './audio'
 
 const TRAVEL_MS = 4 * 60 * 60 * 1000
 const STOP_MS = 8 * 60 * 1000
-const CYCLE_MS = TRAVEL_MS + STOP_MS
+const CALAIS_STOP_MS = 5 * 60 * 1000
 const EPOCH = new Date('2026-07-15T05:30:00+02:00').getTime()
 const MUSIC_VOLUME_KEY = 'nightline.musicVolume'
 const TRAIN_VOLUME_KEY = 'nightline.trainVolume'
@@ -35,6 +35,7 @@ interface Scene {
   detail: string
   at: number
   station?: boolean
+  stopMs?: number
   daySrc: string
   dawnSrc?: string
   afternoonSrc?: string
@@ -43,10 +44,20 @@ interface Scene {
   nightSrc?: string
 }
 
+interface RouteData {
+  id: string
+  name: string
+  fromCode: string
+  fromName: string
+  toCode: string
+  toName: string
+  scenes: Scene[]
+}
+
 type ScenePhase = 'night' | 'dawn' | 'day' | 'afternoon' | 'golden' | 'dusk'
 const SCENE_PHASES: ScenePhase[] = ['dawn', 'day', 'afternoon', 'golden', 'dusk', 'night']
 
-const scenes: Scene[] = [
+const milanoParisScenes: Scene[] = [
   { daySrc: '/scenes/milano-centrale-day.png', dawnSrc: '/scenes/milano-centrale-dawn.jpg', afternoonSrc: '/scenes/milano-centrale-afternoon.jpg', goldenSrc: '/scenes/milano-centrale-golden.jpg', duskSrc: '/scenes/milano-centrale-dusk.jpg', nightSrc: '/scenes/milano-centrale-night.png', label: 'Milano Centrale', detail: 'Platform 7 · Milano', at: 0, station: true },
   { daySrc: '/scenes/milan-departure-day.jpg', dawnSrc: '/scenes/milan-departure-dawn.jpg', afternoonSrc: '/scenes/milan-departure-afternoon.jpg', goldenSrc: '/scenes/milan-departure-v2.webp', duskSrc: '/scenes/milan-departure-dusk.jpg', nightSrc: '/scenes/milan-departure-night.jpg', label: 'Leaving Milano', detail: 'Lombardy · IT', at: 0.055 },
   { daySrc: '/scenes/alps-day.jpg', dawnSrc: '/scenes/alps-dawn.jpg', afternoonSrc: '/scenes/alps-afternoon.jpg', goldenSrc: '/scenes/alps.webp', duskSrc: '/scenes/alps-dusk.jpg', nightSrc: '/scenes/alps-night.jpg', label: 'Crossing the Alps', detail: 'Val di Susa · IT', at: 0.31 },
@@ -55,10 +66,87 @@ const scenes: Scene[] = [
   { daySrc: '/scenes/paris-gare-de-lyon-day.png', dawnSrc: '/scenes/paris-gare-de-lyon-dawn.jpg', afternoonSrc: '/scenes/paris-gare-de-lyon-afternoon.jpg', goldenSrc: '/scenes/paris-gare-de-lyon-golden.jpg', duskSrc: '/scenes/paris-gare-de-lyon-dusk.jpg', nightSrc: '/scenes/paris-gare-de-lyon-night.png', label: 'Paris Gare de Lyon', detail: 'Arrival platform · Paris', at: 0.975, station: true },
 ]
 
-function sceneOpacity(progress: number, index: number) {
-  const blend = index === 1 || index === scenes.length - 1 ? 0.02 : 0.035
-  const center = scenes[index].at
-  const next = scenes[index + 1]?.at
+const parisLondonScenes: Scene[] = [
+  { ...milanoParisScenes[milanoParisScenes.length - 1], detail: 'Departure platform · Paris', at: 0 },
+  { daySrc: '/scenes/picardy-countryside-day-v2.png', label: 'Picardy Countryside', detail: 'Hauts-de-France · FR', at: 0.20 },
+  { daySrc: '/scenes/calais-terminal-day-v3.png', label: 'Calais-Fréthun Terminal', detail: 'Eurotunnel Port · Calais', at: 0.45, station: true, stopMs: CALAIS_STOP_MS },
+  {
+    daySrc: '/scenes/channel-tunnel-day-v2.png',
+    dawnSrc: '/scenes/channel-tunnel-day-v2.png',
+    afternoonSrc: '/scenes/channel-tunnel-day-v2.png',
+    goldenSrc: '/scenes/channel-tunnel-day-v2.png',
+    duskSrc: '/scenes/channel-tunnel-day-v2.png',
+    nightSrc: '/scenes/channel-tunnel-day-v2.png',
+    label: 'The Channel Tunnel',
+    detail: 'Under the English Channel',
+    at: 0.60
+  },
+  { daySrc: '/scenes/kent-downs-day-v2.png', label: 'Kent Downs', detail: 'Kent · UK', at: 0.80 },
+  { daySrc: '/scenes/london-st-pancras-day-v3.png', label: 'London St Pancras Intl', detail: 'Arrival platform · London', at: 0.975, station: true },
+]
+
+function reverseScenes(scenes: Scene[], departureDetail: string, arrivalDetail: string): Scene[] {
+  const lastIndex = scenes.length - 1
+  return [...scenes].reverse().map((scene, index) => ({
+    ...scene,
+    at: index === 0 ? 0 : index === lastIndex ? 0.975 : 1 - scene.at,
+    detail: index === 0 ? departureDetail : index === lastIndex ? arrivalDetail : scene.detail,
+  }))
+}
+
+const routes: RouteData[] = [
+  {
+    id: 'milano_paris',
+    name: 'Milano → Paris',
+    fromCode: 'MIL',
+    fromName: 'Milano',
+    toCode: 'PAR',
+    toName: 'Paris',
+    scenes: milanoParisScenes,
+  },
+  {
+    id: 'paris_london',
+    name: 'Paris → London',
+    fromCode: 'PAR',
+    fromName: 'Paris',
+    toCode: 'LON',
+    toName: 'London',
+    scenes: parisLondonScenes,
+  },
+  {
+    id: 'london_paris',
+    name: 'London → Paris',
+    fromCode: 'LON',
+    fromName: 'London',
+    toCode: 'PAR',
+    toName: 'Paris',
+    scenes: reverseScenes(parisLondonScenes, 'Departure platform · London', 'Arrival platform · Paris'),
+  },
+  {
+    id: 'paris_milano',
+    name: 'Paris → Milano',
+    fromCode: 'PAR',
+    fromName: 'Paris',
+    toCode: 'MIL',
+    toName: 'Milano',
+    scenes: reverseScenes(milanoParisScenes, 'Departure platform · Paris', 'Platform 7 · Milano'),
+  }
+]
+
+function getRouteTravelMs(route: RouteData) {
+  return TRAVEL_MS + route.scenes.reduce((total, scene) => total + (scene.stopMs || 0), 0)
+}
+
+function getRouteLegMs(route: RouteData) {
+  return getRouteTravelMs(route) + STOP_MS
+}
+
+const FULL_CYCLE_MS = routes.reduce((total, route) => total + getRouteLegMs(route), 0)
+
+function sceneOpacity(progress: number, index: number, currentScenes: Scene[]) {
+  const blend = index === 1 || index === currentScenes.length - 1 ? 0.02 : 0.035
+  const center = currentScenes[index].at
+  const next = currentScenes[index + 1]?.at
   if (index > 0 && progress < center - blend) return 0
   if (index > 0 && progress < center + blend) return (progress - (center - blend)) / (blend * 2)
   if (next !== undefined && progress > next + blend) return 0
@@ -261,19 +349,74 @@ function App() {
     }
   }
 
+  const itineraryElapsed = ((now - EPOCH) % FULL_CYCLE_MS + FULL_CYCLE_MS) % FULL_CYCLE_MS
+  let currentRouteIndex = 0
+  let legElapsed = itineraryElapsed
+  while (legElapsed >= getRouteLegMs(routes[currentRouteIndex])) {
+    legElapsed -= getRouteLegMs(routes[currentRouteIndex])
+    currentRouteIndex += 1
+  }
+  const currentRoute = routes[currentRouteIndex]
+  const routeTravelMs = getRouteTravelMs(currentRoute)
+  const routeLegMs = getRouteLegMs(currentRoute)
+  const nextRoute = routes[(currentRouteIndex + 1) % routes.length]
+
   const journey = useMemo(() => {
-    const elapsed = ((now - EPOCH) % CYCLE_MS + CYCLE_MS) % CYCLE_MS
-    const stopped = elapsed >= TRAVEL_MS
-    const progress = stopped ? 1 : elapsed / TRAVEL_MS
-    const remaining = stopped ? CYCLE_MS - elapsed : TRAVEL_MS - elapsed
+    const elapsed = legElapsed
+    const stopped = elapsed >= routeTravelMs
+    const currentScenes = currentRoute.scenes
+    const timedStops = currentScenes.filter((scene) => scene.stopMs)
+    let completedStopMs = 0
+    let progress = stopped ? 1 : 0
+    let midRouteStopped = false
+    let intermediateStopRemaining = 0
+
+    if (!stopped) {
+      for (const station of timedStops) {
+        const stopArrival = station.at * TRAVEL_MS + completedStopMs
+        const stopDeparture = stopArrival + (station.stopMs || 0)
+        if (elapsed < stopArrival) break
+        if (elapsed < stopDeparture) {
+          progress = station.at
+          midRouteStopped = true
+          intermediateStopRemaining = stopDeparture - elapsed
+          break
+        }
+        completedStopMs += station.stopMs || 0
+      }
+      if (!midRouteStopped) progress = clamp((elapsed - completedStopMs) / TRAVEL_MS)
+    }
+
+    const remaining = stopped ? routeLegMs - elapsed : routeTravelMs - elapsed
     const arrival = new Date(now + (stopped ? 0 : remaining))
-    const currentIndex = [...scenes].reverse().findIndex((scene) => progress >= scene.at)
-    const sceneIndex = scenes.length - 1 - currentIndex
+    const currentIndex = [...currentScenes].reverse().findIndex((scene) => progress >= scene.at)
+    const sceneIndex = currentScenes.length - 1 - currentIndex
     const departureSpeed = clamp((progress - 0.012) / 0.055)
     const arrivalSpeed = clamp((1 - progress) / 0.055)
-    const speed = stopped ? 0 : Math.min(departureSpeed, arrivalSpeed)
-    return { elapsed, stopped, progress, remaining, arrival, speed, sceneIndex: Math.max(0, sceneIndex), scene: scenes[Math.max(0, sceneIndex)] }
-  }, [now])
+    
+    let speedScale = Math.min(departureSpeed, arrivalSpeed)
+    for (const station of timedStops) {
+      const transition = 0.02
+      if (progress >= station.at - transition && progress < station.at) {
+        speedScale *= (station.at - progress) / transition
+      } else if (progress > station.at && progress <= station.at + transition) {
+        speedScale *= (progress - station.at) / transition
+      }
+    }
+    
+    const speed = stopped || midRouteStopped ? 0 : speedScale
+    return { elapsed, stopped, progress, remaining, arrival, speed, sceneIndex: Math.max(0, sceneIndex), scene: currentScenes[Math.max(0, sceneIndex)], midRouteStopped, intermediateStopRemaining }
+  }, [now, currentRoute, legElapsed, routeLegMs, routeTravelMs])
+
+  const isAtPlatform = journey.stopped || journey.midRouteStopped
+  const departureCountdown = journey.midRouteStopped ? journey.intermediateStopRemaining : journey.remaining
+
+  // Keep audio engine synchronized with train moving state changes
+  useEffect(() => {
+    if (audio.current) {
+      audio.current.setTrainMoving(!journey.stopped && !journey.midRouteStopped)
+    }
+  }, [journey.stopped, journey.midRouteStopped])
 
   const timeOfDay = useMemo(() => getTimeOfDay(new Date(now)), [now])
   const localTime = new Date(now).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
@@ -295,6 +438,7 @@ function App() {
       engine.setMusicVolume(musicVolume / 100)
       engine.setTrainVolume(trainVolume / 100)
       engine.setWindowOpen(windowOpen / 100)
+      engine.setTrainMoving(!journey.stopped && !journey.midRouteStopped)
     }
     if (engine.context.state === 'suspended') void engine.context.resume()
     return engine
@@ -437,7 +581,7 @@ function App() {
         </div>
       )}
       <div
-        className={`world ${journey.stopped ? 'world--stopped' : ''} ${journey.scene.station ? 'world--platform' : ''}`}
+        className={`world ${journey.stopped || journey.midRouteStopped ? 'world--stopped' : ''} ${journey.scene.station ? 'world--platform' : ''}`}
         style={{
           '--scene-brightness': 0.4 + timeOfDay.daylight * 0.6,
           '--scene-saturation': 0.72 + timeOfDay.daylight * 0.28,
@@ -446,11 +590,11 @@ function App() {
         } as React.CSSProperties}
         aria-hidden="true"
       >
-        {scenes.map((scene, index) => (entered || entering) && Math.abs(index - journey.sceneIndex) <= 1 && (
+        {currentRoute.scenes.map((scene, index) => (entered || entering) && Math.abs(index - journey.sceneIndex) <= 1 && (
           <div
             className={`scene-stage ${scene.station ? 'scene-stage--station' : ''}`}
             key={scene.label}
-            style={{ opacity: sceneOpacity(journey.progress, index) }}
+            style={{ opacity: sceneOpacity(journey.progress, index, currentRoute.scenes) }}
           >
             {SCENE_PHASES.map((phase) => {
               const opacity = timeOfDay.weights[phase]
@@ -480,16 +624,16 @@ function App() {
         
         {/* Wall Mounted Retro-Modern Screen */}
         <section className="trip-card trip-card--wall">
-          <div className="eyebrow">{journey.stopped ? 'NOW AT PLATFORM' : 'CURRENT JOURNEY'}</div>
+          <div className="eyebrow">{isAtPlatform ? 'NOW AT PLATFORM' : 'CURRENT JOURNEY'}</div>
           <div className="route-title">
-            <div><strong>MIL</strong><span>Milano</span></div>
+            <div><strong>{currentRoute.fromCode}</strong><span>{currentRoute.fromName}</span></div>
             <div className="route-line"><i /><Route size={18} /><i /></div>
-            <div className="align-right"><strong>PAR</strong><span>Paris</span></div>
+            <div className="align-right"><strong>{currentRoute.toCode}</strong><span>{currentRoute.toName}</span></div>
           </div>
           <div className="progress-track"><span style={{ width: `${journey.progress * 100}%` }}><i /></span></div>
           <div className="trip-meta">
-            <div><MapPin size={15} /><span><small>NOW PASSING</small>{journey.scene.detail}</span></div>
-            <div className="align-right"><small>{journey.stopped ? 'DEPARTING AGAIN' : 'ARRIVAL'}</small><b>{journey.stopped ? formatDuration(journey.remaining) : journey.arrival.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</b></div>
+            <div><MapPin size={15} /><span><small>{isAtPlatform ? 'NOW AT' : 'NOW PASSING'}</small>{journey.scene.detail}</span></div>
+            <div className="align-right"><small>{isAtPlatform ? 'DEPARTING AGAIN' : 'ARRIVAL'}</small><b>{isAtPlatform ? formatDuration(departureCountdown) : journey.arrival.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</b></div>
           </div>
         </section>
         
@@ -583,16 +727,16 @@ function App() {
       </header>
 
       <section className="trip-card trip-card--floating">
-        <div className="eyebrow">{journey.stopped ? 'NOW AT PLATFORM' : 'CURRENT JOURNEY'}</div>
+        <div className="eyebrow">{isAtPlatform ? 'NOW AT PLATFORM' : 'CURRENT JOURNEY'}</div>
         <div className="route-title">
-          <div><strong>MIL</strong><span>Milano</span></div>
+          <div><strong>{currentRoute.fromCode}</strong><span>{currentRoute.fromName}</span></div>
           <div className="route-line"><i /><Route size={18} /><i /></div>
-          <div className="align-right"><strong>PAR</strong><span>Paris</span></div>
+          <div className="align-right"><strong>{currentRoute.toCode}</strong><span>{currentRoute.toName}</span></div>
         </div>
         <div className="progress-track"><span style={{ width: `${journey.progress * 100}%` }}><i /></span></div>
         <div className="trip-meta">
-          <div><MapPin size={15} /><span><small>NOW PASSING</small>{journey.scene.detail}</span></div>
-          <div className="align-right"><small>{journey.stopped ? 'DEPARTING AGAIN' : 'ARRIVAL'}</small><b>{journey.stopped ? formatDuration(journey.remaining) : journey.arrival.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</b></div>
+          <div><MapPin size={15} /><span><small>{isAtPlatform ? 'NOW AT' : 'NOW PASSING'}</small>{journey.scene.detail}</span></div>
+          <div className="align-right"><small>{isAtPlatform ? 'DEPARTING AGAIN' : 'ARRIVAL'}</small><b>{isAtPlatform ? formatDuration(departureCountdown) : journey.arrival.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</b></div>
         </div>
       </section>
 
@@ -628,15 +772,17 @@ function App() {
 
       <aside className={`journey-panel ${showJourney ? 'journey-panel--open' : ''}`}>
         <div className="eyebrow">THE ROUTE</div>
-        <h2>Milano → Paris</h2>
+        <h2>{currentRoute.name}</h2>
         <p>A slow radio journey, unfolding in real time.</p>
+
         <ol>
-          {scenes.map((scene, index) => {
+          {currentRoute.scenes.map((scene, index) => {
             const reached = journey.progress >= scene.at
-            return <li className={reached ? 'reached' : ''} key={scene.label}><i /> <span><b>{scene.label}</b><small>{scene.detail}</small></span>{index === scenes.length - 1 && <em>ETA {journey.arrival.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</em>}</li>
+            return <li className={reached ? 'reached' : ''} key={scene.label}><i /> <span><b>{scene.label}</b><small>{scene.detail}</small></span>{index === currentRoute.scenes.length - 1 && <em>ETA {journey.arrival.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</em>}</li>
           })}
         </ol>
-        <div className="next-route"><small>COMING NEXT</small><b>Paris → Berlin</b><span>Next route pack in preparation</span></div>
+
+        <div className="next-route"><small>NEXT LEG</small><b>{nextRoute.name}</b><span>Departs after the 8-minute platform stop.</span></div>
       </aside>
     </main>
   )
