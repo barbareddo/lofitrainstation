@@ -611,7 +611,7 @@ export function createAudioEngine(onSourceChange?: (source: AudioSource) => void
     const cargo = Math.random() < 0.3
     // Freight consists are longer and slower: a deep, drawn-out rumble instead
     // of the bright whoosh of a passenger train.
-    const dur = cargo ? rand(4.5, 7) : rand(2.6, 3.4)
+    const dur = cargo ? rand(4.5, 7) : rand(4.6, 5.4)
     const src = context.createBufferSource()
     src.buffer = white
     const filter = context.createBiquadFilter()
