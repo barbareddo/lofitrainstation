@@ -198,8 +198,6 @@ button { font: inherit; }
 .brand-mark { display: grid; place-items: center; width: 38px; height: 38px; border-radius: 50%; color: #1a201d; background: #e7bb78; box-shadow: 0 0 24px rgba(231,187,120,.25); }
 .brand b { display: block; font-size: 13px; letter-spacing: .24em; }
 .brand small { display: block; margin-top: 3px; font-family: 'DM Mono'; font-size: 8px; letter-spacing: .24em; color: rgba(255,255,255,.5); }
-.live { position: absolute; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 8px; padding: 8px 13px; border: 1px solid rgba(255,255,255,.16); border-radius: 99px; font-family: 'DM Mono'; font-size: 9px; letter-spacing: .17em; background: rgba(10,15,16,.5); backdrop-filter: blur(15px); }
-.live span { width: 6px; height: 6px; border-radius: 50%; background: #d98c71; box-shadow: 0 0 0 4px rgba(217,140,113,.12); animation: pulse 2s infinite; }
 @keyframes pulse { 50% { opacity: .45; } }
 .icon-button, .sound-button { display: grid; place-items: center; width: 39px; height: 39px; color: #fff; border: 1px solid rgba(255,255,255,.14); border-radius: 50%; background: rgba(8,12,14,.42); backdrop-filter: blur(14px); cursor: pointer; }
 .top-actions { display: flex; align-items: center; gap: 9px; }
@@ -234,6 +232,7 @@ button { font: inherit; }
 .analog-clock {
   display: none;
 }
+.wall-radio { display: none; }
 
 @media (min-width: 901px) {
   .trip-card--floating {
@@ -436,7 +435,7 @@ button { font: inherit; }
   .analog-clock {
     display: block;
     position: absolute;
-    left: 8.5%;
+    left: 6.2%;
     top: 13.5%;
     width: 7.5%;
     height: 13.3%;
@@ -455,6 +454,156 @@ button { font: inherit; }
       0 8px 20px rgba(0, 0, 0, 0.75), /* shadow on wood wall */
       0 2px 4px rgba(0, 0, 0, 0.4);
   }
+
+  .wall-radio {
+    position: absolute;
+    z-index: 4;
+    left: 14.3%;
+    top: 22.5%;
+    display: block;
+    width: 14.65%;
+    height: 12.15%;
+    color: #ead8b6;
+    pointer-events: auto;
+    filter: drop-shadow(0 10px 11px rgba(17, 5, 1, .72));
+  }
+  .wall-radio__case {
+    width: 100%;
+    height: 100%;
+    display: grid;
+    grid-template-columns: 41% 59%;
+    padding: 8px;
+    border: 2px solid #281006;
+    border-radius: 9px;
+    background:
+      linear-gradient(100deg, rgba(255, 194, 105, .13), transparent 28% 72%, rgba(22, 6, 1, .24)),
+      repeating-linear-gradient(2deg, rgba(255,255,255,.025) 0 1px, transparent 1px 5px),
+      #4a210e;
+    box-shadow:
+      inset 0 0 0 2px #8c5524,
+      inset 0 0 0 4px #2c1107,
+      inset 0 2px 2px rgba(255, 211, 145, .2),
+      0 2px 2px rgba(232, 161, 78, .16);
+  }
+  .wall-radio__speaker {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    grid-template-rows: repeat(6, 1fr);
+    place-items: center;
+    margin: 7px 8px 7px 6px;
+    padding: 5px;
+    border: 1px solid #9c6933;
+    border-radius: 6px;
+    background: radial-gradient(circle, #090806 0 36%, #221710 39% 100%);
+    box-shadow: inset 0 0 10px #050302, 0 0 0 2px #2a1309;
+  }
+  .wall-radio__speaker i {
+    width: 3px;
+    height: 3px;
+    border-radius: 50%;
+    background: #a47642;
+    opacity: .48;
+  }
+  .wall-radio--playing .wall-radio__speaker {
+    box-shadow: inset 0 0 10px #050302, 0 0 0 2px #2a1309, 0 0 15px rgba(225, 170, 91, .12);
+  }
+  .wall-radio__panel {
+    min-width: 0;
+    display: grid;
+    grid-template-rows: auto 1fr auto;
+    padding: 5px 6px 5px 3px;
+  }
+  .wall-radio__brand {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    font-family: 'DM Mono', monospace;
+    text-shadow: 0 1px 2px #120601;
+  }
+  .wall-radio__brand span { font-size: clamp(6px, .55vw, 10px); font-weight: 500; letter-spacing: .14em; }
+  .wall-radio__brand small { font-size: clamp(4px, .34vw, 7px); color: #c6995c; letter-spacing: .08em; }
+  .wall-radio__dial {
+    position: relative;
+    align-self: center;
+    height: 25%;
+    min-height: 13px;
+    border: 1px solid #2a160d;
+    border-radius: 2px;
+    background: linear-gradient(#d8bf8c, #9e7845);
+    box-shadow: inset 0 1px 3px rgba(35, 17, 5, .58), 0 1px rgba(241, 194, 116, .22);
+  }
+  .wall-radio__dial::before {
+    content: '88    96    104';
+    position: absolute;
+    inset: 1px 4px;
+    color: #342111;
+    font-family: 'DM Mono', monospace;
+    font-size: clamp(4px, .33vw, 6px);
+    letter-spacing: .03em;
+    white-space: pre;
+  }
+  .wall-radio__dial span {
+    position: absolute;
+    left: 58%;
+    top: -2px;
+    bottom: -2px;
+    width: 1px;
+    background: #9e291c;
+    box-shadow: 0 0 3px rgba(158, 41, 28, .55);
+  }
+  .wall-radio__track {
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 2px 0;
+  }
+  .wall-radio__track div { min-width: 0; }
+  .wall-radio__track small, .wall-radio__track strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .wall-radio__track small { font: 500 clamp(4px, .34vw, 7px)/1 'DM Mono', monospace; letter-spacing: .1em; color: #b99566; }
+  .wall-radio__track strong { margin-top: 2px; font-size: clamp(6px, .52vw, 10px); font-weight: 600; }
+  .wall-radio__signal {
+    flex: 0 0 auto;
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: #5b231b;
+    box-shadow: inset 0 0 2px #1f0704;
+  }
+  .wall-radio--playing .wall-radio__signal { background: #dc7653; box-shadow: 0 0 7px #d65e3b; animation: pulse 2s infinite; }
+  .wall-radio__controls { display: grid; grid-template-columns: auto auto 1fr; align-items: center; gap: 4px; }
+  .wall-radio__controls button {
+    display: grid;
+    place-items: center;
+    width: clamp(18px, 1.45vw, 27px);
+    height: clamp(18px, 1.45vw, 27px);
+    padding: 0;
+    border: 1px solid #291109;
+    border-radius: 50%;
+    color: #24130c;
+    background: radial-gradient(circle at 38% 32%, #d2a55f, #825526 72%);
+    box-shadow: inset 0 1px rgba(255, 225, 168, .35), 0 2px 3px rgba(15, 4, 1, .55);
+    cursor: pointer;
+  }
+  .wall-radio__controls button:hover:not(:disabled) { filter: brightness(1.14); }
+  .wall-radio__controls button:active:not(:disabled) { transform: translateY(1px); box-shadow: inset 0 1px 3px rgba(15, 4, 1, .6); }
+  .wall-radio__controls button:disabled { opacity: .42; cursor: default; }
+  .wall-radio__controls label { min-width: 0; display: flex; align-items: center; gap: 4px; color: #c99e62; }
+  .wall-radio__controls label svg { flex: 0 0 auto; }
+  .wall-radio__controls input[type='range'] { width: 100%; min-width: 0; height: 16px; margin: 0; accent-color: #c38b45; cursor: pointer; touch-action: none; }
+  .wall-radio__mount {
+    position: absolute;
+    top: -4px;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, #e3b66f, #5e3214 68%);
+    box-shadow: 0 1px 2px #170601;
+  }
+  .wall-radio__mount--left { left: 12px; }
+  .wall-radio__mount--right { right: 12px; }
+
+  .station .now-playing { display: none; }
 
   /* Glass glare reflection on the clock face */
   .analog-clock::after {
@@ -608,7 +757,6 @@ button { font: inherit; }
 }
 @media (max-width: 560px) {
   .topbar { inset: 18px 18px auto; }
-  .live { display: none; }
   .trip-card { top: 14%; left: 14px; width: calc(100% - 28px); padding: 17px; }
   .route-title strong { font-size: 26px; }
   .carriage-wrapper { transform: translate(-50%, -50%) scale(1.16); }

@@ -8,6 +8,8 @@ import Play from 'lucide-react/dist/esm/icons/play.mjs'
 import Radio from 'lucide-react/dist/esm/icons/radio.mjs'
 import Route from 'lucide-react/dist/esm/icons/route.mjs'
 import SlidersHorizontal from 'lucide-react/dist/esm/icons/sliders-horizontal.mjs'
+import Square from 'lucide-react/dist/esm/icons/square.mjs'
+import Volume2 from 'lucide-react/dist/esm/icons/volume-2.mjs'
 import { createAudioEngine, type AudioSource } from './audio'
 
 const TRAVEL_MS = 4 * 60 * 60 * 1000
@@ -285,7 +287,7 @@ function App() {
   const minuteDeg = minutes * 6 + seconds * 0.1
   const secondDeg = seconds * 6
 
-  const ensureAudio = async () => {
+  const ensureAudio = () => {
     let engine = audio.current
     if (!engine) {
       engine = createAudioEngine(setAudioSource)
@@ -294,7 +296,7 @@ function App() {
       engine.setTrainVolume(trainVolume / 100)
       engine.setWindowOpen(windowOpen / 100)
     }
-    if (engine.context.state === 'suspended') await engine.context.resume()
+    if (engine.context.state === 'suspended') void engine.context.resume()
     return engine
   }
 
@@ -303,11 +305,25 @@ function App() {
       audio.current?.pauseMusic()
       setPlaying(false)
     } else {
-      const engine = await ensureAudio()
+      const engine = ensureAudio()
       engine.setMusicVolume(musicVolume / 100)
-      await engine.startMusic()
+      void engine.startMusic()
       setPlaying(true)
     }
+  }
+
+  const playMusic = async () => {
+    if (playing) return
+    const engine = ensureAudio()
+    engine.setMusicVolume(musicVolume / 100)
+    void engine.startMusic()
+    setPlaying(true)
+  }
+
+  const stopMusic = () => {
+    if (!playing) return
+    audio.current?.pauseMusic()
+    setPlaying(false)
   }
 
   const toggleFullscreen = () => {
@@ -321,14 +337,14 @@ function App() {
     setEntering(true)
     setEntryProgress(1)
 
-    const engine = await ensureAudio()
+    const engine = ensureAudio()
     engine.playDoorOpen()
 
     // Begin the stream during the user's gesture, but keep it silent until
     // the door has visually opened. This respects browser autoplay rules.
     if (!playing) {
       engine.setMusicVolume(0)
-      await engine.startMusic()
+      void engine.startMusic()
       setPlaying(true)
       if (musicFadeTimer.current !== null) window.clearTimeout(musicFadeTimer.current)
       musicFadeTimer.current = window.setTimeout(() => {
@@ -492,6 +508,33 @@ function App() {
             </div>
           </div>
         </div>
+
+        {/* Radio integrated into the left wood wall on desktop */}
+        <section className={`wall-radio ${playing ? 'wall-radio--playing' : ''}`} aria-label="Nightline wall radio">
+          <div className="wall-radio__case">
+            <div className="wall-radio__speaker" aria-hidden="true">
+              {Array.from({ length: 30 }, (_, index) => <i key={index} />)}
+            </div>
+            <div className="wall-radio__panel">
+              <div className="wall-radio__brand"><span>NIGHTLINE</span><small>LOFI · LIVE</small></div>
+              <div className="wall-radio__dial" aria-hidden="true"><span /></div>
+              <div className="wall-radio__track">
+                <span className="wall-radio__signal" />
+                <div><small>{playing ? 'ON AIR' : 'RADIO OFF'}</small><strong>{audioSource === 'radio' ? 'Chilling' : timeOfDay.track}</strong></div>
+              </div>
+              <div className="wall-radio__controls">
+                <button type="button" onClick={() => void playMusic()} disabled={playing} aria-label="Play radio"><Play fill="currentColor" size={13} /></button>
+                <button type="button" onClick={stopMusic} disabled={!playing} aria-label="Stop radio"><Square fill="currentColor" size={11} /></button>
+                <label>
+                  <Volume2 size={13} aria-hidden="true" />
+                  <input aria-label="Radio volume" type="range" min="0" max="100" value={musicVolume} onChange={(event) => setMusicVolume(Number(event.target.value))} />
+                </label>
+              </div>
+            </div>
+          </div>
+          <span className="wall-radio__mount wall-radio__mount--left" aria-hidden="true" />
+          <span className="wall-radio__mount wall-radio__mount--right" aria-hidden="true" />
+        </section>
         
         {/* Sliding Window Glass Overlay */}
         <div className="window-container">
@@ -533,7 +576,6 @@ function App() {
           <span className="brand-mark"><Radio size={18} /></span>
           <span><b>NIGHTLINE</b><small>LOFI RADIO</small></span>
         </button>
-        <div className="live"><span /> LIVE JOURNEY</div>
         <div className="top-actions">
           <div className="time-badge"><Clock3 size={14} /><span>{timeOfDay.label}</span><b>{localTime}</b></div>
           <button className="icon-button" onClick={toggleFullscreen} aria-label="Toggle fullscreen"><Maximize2 size={18} /></button>
