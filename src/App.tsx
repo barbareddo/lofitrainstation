@@ -279,6 +279,11 @@ function App() {
   const tunnelStripsRef = useRef<HTMLDivElement>(null)
   const lightBandsRef = useRef<HTMLDivElement>(null)
   const tunnelGlowRef = useRef<HTMLDivElement>(null)
+  const reflectionRef = useRef<HTMLDivElement>(null)
+
+  // Passing train on the far track: visual streak synced with the audio event
+  const [passingTrain, setPassingTrain] = useState<{ key: number; duration: number; kind: 'passenger' | 'cargo' } | null>(null)
+  const passingTrainTimer = useRef<number | null>(null)
 
   // Realism layer: mutable values shared with the frame loop
   const speedTargetRef = useRef(0)
@@ -530,6 +535,7 @@ function App() {
     let stripX = 0
     let bandX = 0
     let frameW = 0
+    let reflLevel = 0
     const seed = Math.random() * 100
 
     const NEAR_TILE = 480
@@ -590,6 +596,15 @@ function App() {
           : '0'
       }
 
+      // Warm interior reflection on the window glass: faint at night, stronger
+      // in tunnels — you still see the landscape through it
+      const reflection = reflectionRef.current
+      if (reflection) {
+        const target = (1 - daylightRef.current) * 0.14 + (tunnelRef.current ? 0.12 : 0)
+        reflLevel += (target - reflLevel) * Math.min(1, dt * 2.5)
+        reflection.style.opacity = reflLevel.toFixed(3)
+      }
+
       // Carriage vibration + rail-joint jolts synced with the click audio
       const rig = rigRef.current
       if (rig) {
@@ -641,6 +656,12 @@ function App() {
       engine.setLocale(locale)
       engine.onRailClick = (strength) => {
         joltRef.current = Math.min(0.9, joltRef.current + strength * 0.7)
+      }
+      engine.onPassingTrain = (duration, kind) => {
+        if (reducedMotionRef.current) return
+        if (passingTrainTimer.current !== null) window.clearTimeout(passingTrainTimer.current)
+        setPassingTrain({ key: Date.now(), duration, kind })
+        passingTrainTimer.current = window.setTimeout(() => setPassingTrain(null), duration * 1000 + 500)
       }
     }
     if (engine.context.state === 'suspended') void engine.context.resume()
@@ -831,6 +852,17 @@ function App() {
           <div className="night-wash" style={{ opacity: (1 - timeOfDay.daylight) * 0.24 }} />
           <div className="golden-wash" style={{ opacity: timeOfDay.warmth * 0.2 }} />
           <div className="speed-lines" />
+          {passingTrain && (
+            <div
+              key={passingTrain.key}
+              className={`passing-train passing-train--${passingTrain.kind}`}
+              style={{ animationDuration: `${passingTrain.duration}s` }}
+              aria-hidden="true"
+            >
+              <div className="passing-train__body" />
+              <div className="passing-train__lights" style={{ opacity: 0.3 + (1 - timeOfDay.daylight) * 0.7 }} />
+            </div>
+          )}
         </div>
 
         <div
@@ -907,6 +939,7 @@ function App() {
               onPointerUp={handleWindowPointerUp}
               aria-label="Train window glass, drag or tap handle to slide open/close"
             >
+              <div className="window-reflection" ref={reflectionRef} aria-hidden="true" />
               <div className="window-handle" />
             </div>
           </div>

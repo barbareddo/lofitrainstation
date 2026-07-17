@@ -15,6 +15,7 @@ type AudioEngine = {
   setTunnel: (value: boolean) => void
   setLocale: (locale: Locale) => void
   onRailClick?: (strength: number) => void
+  onPassingTrain?: (duration: number, kind: 'passenger' | 'cargo') => void
 }
 
 export type AudioSource = 'radio' | 'fallback'
@@ -607,18 +608,21 @@ export function createAudioEngine(onSourceChange?: (source: AudioSource) => void
   const passingTimer = window.setInterval(() => {
     if (stopped || speed < 0.55 || Math.random() > 1 / 170) return
     const at = context.currentTime + 0.1
-    const dur = rand(2.6, 3.4)
+    const cargo = Math.random() < 0.3
+    // Freight consists are longer and slower: a deep, drawn-out rumble instead
+    // of the bright whoosh of a passenger train.
+    const dur = cargo ? rand(4.5, 7) : rand(2.6, 3.4)
     const src = context.createBufferSource()
     src.buffer = white
     const filter = context.createBiquadFilter()
     filter.type = 'bandpass'
     filter.Q.value = 0.9
-    filter.frequency.setValueAtTime(260, at)
-    filter.frequency.exponentialRampToValueAtTime(1500, at + dur * 0.45)
-    filter.frequency.exponentialRampToValueAtTime(240, at + dur)
+    filter.frequency.setValueAtTime(cargo ? 150 : 260, at)
+    filter.frequency.exponentialRampToValueAtTime(cargo ? rand(380, 520) : 1500, at + dur * 0.45)
+    filter.frequency.exponentialRampToValueAtTime(cargo ? 130 : 240, at + dur)
     const g = context.createGain()
     g.gain.setValueAtTime(0.0001, at)
-    g.gain.linearRampToValueAtTime(rand(0.05, 0.075), at + dur * 0.45)
+    g.gain.linearRampToValueAtTime(cargo ? rand(0.04, 0.055) : rand(0.05, 0.075), at + dur * 0.45)
     g.gain.exponentialRampToValueAtTime(0.0001, at + dur)
     const panner = context.createStereoPanner()
     panner.pan.setValueAtTime(-0.85, at)
@@ -629,9 +633,43 @@ export function createAudioEngine(onSourceChange?: (source: AudioSource) => void
     panner.connect(ambienceBus)
     src.start(at)
     src.stop(at + dur + 0.1)
-    // low body thump as it goes by
-    tone(at + dur * 0.25, 52, 44, dur * 0.55, 0.035, dur * 0.2)
+    if (cargo) {
+      // wagon bogies thumping past one after another
+      const wagons = 4 + Math.floor(rand(0, 3))
+      for (let i = 0; i < wagons; i += 1) {
+        tone(at + dur * 0.18 + i * dur * 0.11, 46 + rand(0, 8), 40, 0.3, 0.02, 0.05)
+      }
+    } else {
+      // low body thump as it goes by
+      tone(at + dur * 0.25, 52, 44, dur * 0.55, 0.035, dur * 0.2)
+    }
+    engine.onPassingTrain?.(dur, cargo ? 'cargo' : 'passenger')
   }, 2000)
+
+  // ---- Level crossings: alternating bells, sometimes a distant horn --------------
+  const playHorn = (at: number, level: number, pan = 0) => {
+    // Two-tone horn a fourth apart, each note slightly detuned for a slow beat
+    for (const base of [311, 415]) {
+      tone(at, base * 0.985, base, 1.7, level, 0.24, 'triangle', pan, ambienceBus)
+      tone(at, base * 1.006, base, 1.7, level * 0.7, 0.28, 'sine', pan, ambienceBus)
+    }
+  }
+  const crossingTimer = window.setInterval(() => {
+    if (stopped || speed < 0.45 || inTunnel || Math.random() > 1 / 150) return
+    const at = context.currentTime + 0.08
+    if (Math.random() < 0.45) playHorn(at, 0.011, rand(-0.3, 0.3))
+    const bellsAt = at + rand(0.8, 1.4)
+    const strikes = 6 + Math.floor(rand(0, 4))
+    for (let i = 0; i < strikes; i += 1) {
+      bell(bellsAt + i * 0.42, i % 2 === 0 ? 1046.5 : 784, 0.5, 0.007)
+    }
+  }, 1000)
+
+  // ---- Rare distant horn out in open country --------------------------------------
+  const hornTimer = window.setInterval(() => {
+    if (stopped || speed < 0.5 || inTunnel || Math.random() > 1 / 240) return
+    playHorn(context.currentTime + rand(0.1, 0.5), rand(0.006, 0.011), rand(-0.5, 0.5))
+  }, 1000)
 
   // ---- Station life: PA jingle + announcement, nearby chatter -------------------
   const paTimer = window.setInterval(() => {
