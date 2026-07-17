@@ -280,7 +280,7 @@ export function createAudioEngine(onSourceChange?: (source: AudioSource) => void
 
   const applyAmbience = () => {
     const s = speed
-    set(subGain.gain, Math.pow(s, 1.8) * 0.085 * (inTunnel ? 1.5 : 1))
+    set(subGain.gain, Math.pow(s, 1.8) * 0.064 * (inTunnel ? 1.5 : 1))
     set(humGain.gain, 0.02 + s * 0.05)
     set(hum2Gain.gain, 0.008 + s * 0.02)
     set(hissGain.gain, 0.0026 + s * 0.0012)
@@ -491,19 +491,22 @@ export function createAudioEngine(onSourceChange?: (source: AudioSource) => void
   // Two axles per bogie up front, then the carriages behind answering the same
   // joints a beat later, duller. Each click also nudges the rumble louder for
   // a split second, like the car body taking the shock.
+  // Click loudness trim: ~25% softer than the first v2 mix so the rolling bed
+  // sits under the music instead of competing with it.
+  const CLICK_LEVEL = 0.75
   const scheduleClick = (at: number, velocity: number, dull = false) => {
     amBoost = Math.min(0.3, amBoost + velocity * (dull ? 0.06 : 0.14))
     if (dull) {
-      tone(at, 70 + rand(0, 14), 50, 0.09, velocity * 0.04, 0.004, 'sine', 0, rollingBus)
-      burst(at, 'bandpass', rand(300, 600), 1.1, velocity * 0.026, 0.003, 0.05, rollingBus)
+      tone(at, 70 + rand(0, 14), 50, 0.09, velocity * 0.04 * CLICK_LEVEL, 0.004, 'sine', 0, rollingBus)
+      burst(at, 'bandpass', rand(300, 600), 1.1, velocity * 0.026 * CLICK_LEVEL, 0.003, 0.05, rollingBus)
       return
     }
-    tone(at, 86 + rand(0, 26), 60, 0.1, velocity * 0.055, 0.004, 'sine', 0, rollingBus)
-    burst(at, 'bandpass', rand(620, 1350) * (1 + windowOpenVal * 0.3), 1.25, velocity * 0.04, 0.003, 0.055, rollingBus)
+    tone(at, 86 + rand(0, 26), 60, 0.1, velocity * 0.055 * CLICK_LEVEL, 0.004, 'sine', 0, rollingBus)
+    burst(at, 'bandpass', rand(620, 1350) * (1 + windowOpenVal * 0.3), 1.25, velocity * 0.04 * CLICK_LEVEL, 0.003, 0.055, rollingBus)
     // high transient "tick" for definition
-    burst(at, 'highpass', 2400, 0.8, velocity * 0.011, 0.001, 0.028, rollingBus)
+    burst(at, 'highpass', 2400, 0.8, velocity * 0.011 * CLICK_LEVEL, 0.001, 0.028, rollingBus)
     // on a bridge the joint rings back once, hollow
-    if (inBridge()) burst(at + 0.085, 'bandpass', rand(380, 620), 1.2, velocity * 0.018, 0.003, 0.06, rollingBus)
+    if (inBridge()) burst(at + 0.085, 'bandpass', rand(380, 620), 1.2, velocity * 0.018 * CLICK_LEVEL, 0.003, 0.06, rollingBus)
   }
 
   let nextClickAt = context.currentTime + 0.4

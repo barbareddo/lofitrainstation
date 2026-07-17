@@ -466,6 +466,29 @@ function App() {
   useEffect(() => { daylightRef.current = timeOfDay.daylight }, [timeOfDay.daylight])
   useEffect(() => { tunnelRef.current = isTunnel }, [isTunnel])
 
+  // Warm the browser cache with the active route's scene images so scenery
+  // changes stay smooth on slow connections. Locally this is a no-op; online
+  // it fetches each asset once, a few at a time, well before it is needed.
+  useEffect(() => {
+    const urls = Array.from(new Set(
+      currentRoute.scenes.flatMap((scene) => SCENE_PHASES.map((phase) => getSceneSrcForPhase(scene, phase))),
+    ))
+    let cancelled = false
+    let index = 0
+    const loadNext = () => {
+      if (cancelled) return
+      const url = urls[index]
+      index += 1
+      if (url === undefined) return
+      const img = new Image()
+      img.onload = loadNext
+      img.onerror = loadNext
+      img.src = url
+    }
+    for (let i = 0; i < 3; i += 1) loadNext()
+    return () => { cancelled = true }
+  }, [currentRoute])
+
   // Feed live speed into the audio engine and fire travel one-shots
   useEffect(() => {
     speedTargetRef.current = journey.speed
