@@ -11,6 +11,7 @@ import SlidersHorizontal from 'lucide-react/dist/esm/icons/sliders-horizontal.mj
 import Square from 'lucide-react/dist/esm/icons/square.mjs'
 import Volume2 from 'lucide-react/dist/esm/icons/volume-2.mjs'
 import { createAudioEngine, type AudioSource } from './audio'
+import { PassingTrain } from './PassingTrain'
 
 const TRAVEL_MS = 4 * 60 * 60 * 1000
 const STOP_MS = 8 * 60 * 1000
@@ -859,8 +860,14 @@ function App() {
               style={{ animationDuration: `${passingTrain.duration}s` }}
               aria-hidden="true"
             >
-              <div className="passing-train__body" />
-              <div className="passing-train__lights" style={{ opacity: 0.3 + (1 - timeOfDay.daylight) * 0.7 }} />
+              {passingTrain.kind === 'passenger' ? (
+                <PassingTrain litOpacity={0.25 + (1 - timeOfDay.daylight) * 0.75} />
+              ) : (
+                <>
+                  <div className="passing-train__body" />
+                  <div className="passing-train__lights" style={{ opacity: 0.3 + (1 - timeOfDay.daylight) * 0.7 }} />
+                </>
+              )}
             </div>
           )}
         </div>

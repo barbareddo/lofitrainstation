@@ -1452,37 +1452,24 @@ button { font: inherit; }
 
 .passing-train {
   position: absolute;
-  top: 24%; /* band roughly through the carriage window */
+  top: 22.5%; /* band roughly through the carriage window */
   left: 0;
-  width: 175vw;
-  height: 16%;
-  transform: translateX(-175vw); /* parked off-screen; also the reduced-motion fallback */
+  transform: translateX(-105%); /* parked off-screen; also the reduced-motion fallback */
   animation: passing-sweep linear forwards;
   pointer-events: none;
-  filter: blur(1.5px);
 }
 @keyframes passing-sweep {
-  from { transform: translateX(-175vw); }
+  from { transform: translateX(-105%); }
   to { transform: translateX(100vw); }
 }
 .passing-train__body, .passing-train__lights { position: absolute; inset: 0; }
 
-/* Passenger train: dark roof and skirt, a band of warm lit windows */
-.passing-train--passenger .passing-train__body {
-  background:
-    linear-gradient(180deg, rgba(16,19,24,.98) 0 24%, transparent 24% 30%, transparent 60% 66%, rgba(12,15,20,.98) 66% 100%),
-    repeating-linear-gradient(90deg,
-      rgba(255,209,130,.92) 0 40px, rgba(255,232,180,.95) 40px 46px,
-      rgba(24,28,34,.97) 46px 72px, rgba(31,36,44,.97) 72px 82px);
-}
-.passing-train--passenger .passing-train__lights {
-  background: repeating-linear-gradient(90deg, rgba(255,214,150,.9) 0 46px, transparent 46px 82px);
-  mix-blend-mode: screen;
-  filter: blur(6px);
-}
+/* Passenger train: Frecciarossa-style SVG consist (src/PassingTrain.tsx) */
+.passing-train--passenger { height: 19%; filter: blur(1px); }
+.passing-train--passenger svg { display: block; height: 100%; width: auto; }
 
 /* Freight train: taller, darker, individual wagons with gaps and marker lights */
-.passing-train--cargo { top: 22.5%; height: 18%; }
+.passing-train--cargo { width: 175vw; height: 18%; filter: blur(1.5px); }
 .passing-train--cargo .passing-train__body {
   background:
     linear-gradient(180deg, transparent 0 8%, rgba(0,0,0,.28) 8% 12%, transparent 12% 100%),
