@@ -7,27 +7,37 @@ button { font: inherit; }
 .station { position: relative; width: 100vw; height: 100svh; min-height: 620px; overflow: hidden; background: #172027; isolation: isolate; }
 .world { position: absolute; inset: 0; z-index: -3; overflow: hidden; background: #607584; }
 .scene-stage { position: absolute; inset: 0; transition: opacity 4s ease; }
-.scene {
+.scene-track {
   position: absolute;
   top: -7.5%;
   bottom: -7.5%;
   left: -7.5%;
-  width: calc(115vh * 2.5006);
-  min-width: 115vw;
+  display: flex;
+  width: max-content;
+  will-change: transform;
+}
+.scene-frame {
+  position: relative;
+  flex: 0 0 auto;
+  width: max(115vw, calc(115vh * 2.5006));
+  height: 100%;
+}
+.scene-frame--mirror { transform: scaleX(-1); }
+.scene {
+  position: absolute;
+  inset: 0;
   background-size: cover;
   background-position: center;
   background-repeat: no-repeat;
-  animation: scenery 36s linear infinite alternate;
   transition: opacity 1.2s ease;
-  will-change: transform, opacity;
+  will-change: opacity;
 }
 .scene--fallback-dawn { filter: brightness(0.68) saturate(0.85) sepia(0.12) hue-rotate(-8deg); }
 .scene--fallback-afternoon { filter: brightness(0.96) saturate(1.08) sepia(0.08); }
 .scene--fallback-golden { filter: brightness(0.88) saturate(1.22) sepia(0.24) hue-rotate(6deg); }
 .scene--fallback-dusk { filter: brightness(0.48) saturate(0.72) sepia(0.08) hue-rotate(-22deg); }
 .scene--fallback-night { filter: brightness(0.26) saturate(0.42) sepia(0.06) hue-rotate(-42deg); }
-.scene-stage--station .scene { animation-duration: 85s; filter: none; }
-.world--stopped .scene { animation-play-state: paused; }
+.scene-stage--station .scene { filter: none; }
 .night-wash, .golden-wash { position: absolute; inset: 0; pointer-events: none; transition: opacity 60s linear; }
 .night-wash { background: linear-gradient(180deg, rgba(3,15,35,.82), rgba(6,19,32,.54) 58%, rgba(12,13,19,.72)); mix-blend-mode: multiply; }
 .golden-wash { background: linear-gradient(115deg, rgba(255,159,66,.74), transparent 46%, rgba(160,85,122,.32)); mix-blend-mode: soft-light; }
@@ -134,6 +144,7 @@ button { font: inherit; }
   border-bottom: 2px solid #2d211f;
   will-change: height;
   transition: height 0.05s linear;
+  animation: curtain-sway 5.4s ease-in-out infinite alternate;
   pointer-events: auto; /* Enable dragging on the curtain fabric itself */
 }
 .curtain-fabric::after {
@@ -182,14 +193,6 @@ button { font: inherit; }
 }
 .vignette { position: absolute; inset: 0; z-index: -1; pointer-events: none; background: radial-gradient(circle at 50% 38%, transparent 18%, rgba(5,8,10,.08) 52%, rgba(3,5,7,.52) 100%); }
 .grain { position: absolute; inset: -40%; z-index: 0; opacity: .055; pointer-events: none; background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.8'/%3E%3C/svg%3E"); animation: grain .25s steps(2) infinite; }
-@keyframes scenery {
-  from {
-    transform: translateX(38.19vw);
-  }
-  to {
-    transform: translateX(calc(79.55vw - 100%));
-  }
-}
 @keyframes rush { to { transform: translateX(-48px); } }
 @keyframes grain { 0% { transform: translate(0,0) } 25% { transform: translate(2%,-3%) } 50% { transform: translate(-3%,2%) } 75% { transform: translate(3%,3%) } }
 
@@ -800,7 +803,7 @@ button { font: inherit; }
   .time-badge { display: none; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .scene, .speed-lines, .grain, .wave i { animation: none !important; }
+  .scene, .speed-lines, .grain, .wave i, .dust i, .curtain-fabric { animation: none !important; }
 }
 
 /* ==========================================================================
@@ -1253,4 +1256,192 @@ button { font: inherit; }
   .vestibule-backdrop { background-size: auto 100%; }
   .entry-portal { top: 4.1svh; width: 100vw; height: 90.95svh; }
   .door-wood { background-size: auto 110%; }
+}
+
+
+/* ==========================================================================
+   Realism layer: rig, parallax foreground, interior light play
+   ========================================================================== */
+
+/* The rig wraps world + carriage + light overlays and carries the vibration */
+.rig {
+  position: absolute;
+  inset: 0;
+  z-index: -3;
+  will-change: transform;
+}
+
+/* Once the entry transition is done, the rAF loop owns world transforms */
+.world--live { transition: none; }
+
+/* Foreground vegetation rushing past the window (fast, blurred, bottom band) */
+.near-field {
+  position: absolute;
+  left: -2%;
+  right: -980px;
+  bottom: -2%;
+  height: 44%;
+  opacity: .5;
+  filter: blur(3px);
+  pointer-events: none;
+  will-change: transform;
+  background:
+    repeating-linear-gradient(86deg, transparent 0 34px, rgba(24, 34, 20, .7) 34px 44px, transparent 44px 96px),
+    repeating-linear-gradient(93deg, transparent 0 52px, rgba(30, 42, 24, .55) 52px 66px, transparent 66px 120px),
+    linear-gradient(180deg, transparent, rgba(22, 32, 19, .85) 78%);
+  background-size: 480px 100%, 480px 100%, 100% 100%;
+  background-repeat: repeat-x, repeat-x, no-repeat;
+  -webkit-mask-image: linear-gradient(180deg, transparent 0, #000 40%);
+  mask-image: linear-gradient(180deg, transparent 0, #000 40%);
+}
+
+/* Catenary poles sweeping by — the signature of train speed */
+.pole-strip {
+  position: absolute;
+  top: -6%;
+  bottom: -4%;
+  left: -2%;
+  right: -1100px;
+  opacity: .5;
+  filter: blur(1.1px);
+  pointer-events: none;
+  will-change: transform;
+  background:
+    repeating-linear-gradient(90deg, transparent 0 524px, rgba(16, 14, 11, .9) 524px 531px, transparent 531px 540px),
+    repeating-linear-gradient(90deg, transparent 0 500px, rgba(16, 14, 11, .5) 500px 540px);
+  background-size: 540px 100%, 540px 30%;
+  background-position: 0 0, 0 12%;
+  background-repeat: repeat-x, repeat-x;
+}
+
+/* Sodium light strips flashing past inside the tunnel */
+.tunnel-strips {
+  position: absolute;
+  top: -4%;
+  bottom: -4%;
+  left: -2%;
+  right: -940px;
+  opacity: 0;
+  transition: opacity 1.4s ease;
+  mix-blend-mode: screen;
+  filter: blur(2px);
+  pointer-events: none;
+  will-change: transform;
+  background: repeating-linear-gradient(90deg, transparent 0 416px, rgba(255, 172, 72, .9) 424px 434px, transparent 442px 460px);
+  background-size: 460px 100%;
+  background-repeat: repeat-x;
+}
+.station--tunnel .tunnel-strips { opacity: .85; }
+
+/* Sunlight bands sweeping the interior (sun through trees) */
+.light-bands {
+  position: absolute;
+  inset: -6% -10%;
+  z-index: 0;
+  opacity: 0;
+  pointer-events: none;
+  mix-blend-mode: soft-light;
+  background: repeating-linear-gradient(97deg, transparent 0 120px, rgba(255, 220, 160, .5) 120px 190px, transparent 190px 340px, rgba(255, 208, 140, .32) 340px 380px, transparent 380px 560px);
+  background-size: 560px 100%;
+  background-repeat: repeat-x;
+}
+
+/* Shaft of sun falling from the window into the carriage */
+.sunbeam {
+  position: absolute;
+  z-index: 0;
+  left: 26%;
+  top: 30%;
+  width: 62%;
+  height: 72%;
+  pointer-events: none;
+  mix-blend-mode: soft-light;
+  filter: blur(16px);
+  opacity: var(--beam-opacity, 0);
+  background: linear-gradient(var(--beam-angle, 12deg), rgba(var(--beam-color, 255, 240, 205), .8), rgba(var(--beam-color, 255, 240, 205), .28) 42%, transparent 72%);
+  clip-path: polygon(18% 0, 74% 0, 100% 100%, 0 100%);
+  transition: opacity 2.5s ease;
+}
+
+/* Dust motes drifting inside the sunbeam */
+.dust {
+  position: absolute;
+  z-index: 0;
+  left: 34%;
+  top: 34%;
+  width: 40%;
+  height: 46%;
+  pointer-events: none;
+  transition: opacity 2.5s ease;
+}
+.dust i {
+  position: absolute;
+  left: calc(6% + var(--i) * 9.8%);
+  top: calc(10% + var(--i) * 6.6%);
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: rgba(255, 236, 196, .85);
+  filter: blur(.4px);
+  opacity: 0;
+  animation: dust-drift calc(7s + var(--i) * 1.3s) ease-in-out calc(var(--i) * -1.7s) infinite alternate;
+}
+.dust i:nth-child(2n) { margin-top: 16%; margin-left: 7%; }
+.dust i:nth-child(3n) { margin-top: 30%; margin-left: -4%; }
+
+@keyframes dust-drift {
+  0% { transform: translate(0, 0); opacity: 0; }
+  20% { opacity: .75; }
+  55% { opacity: .3; }
+  100% { transform: translate(18px, -30px); opacity: .55; }
+}
+
+/* Warm lamp pools that take over as daylight fades */
+.lamp-glow {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  mix-blend-mode: screen;
+  transition: opacity 3s ease;
+  background:
+    radial-gradient(ellipse 26% 16% at 12% 3%, rgba(255, 196, 118, .5), transparent 70%),
+    radial-gradient(ellipse 26% 16% at 88% 3%, rgba(255, 196, 118, .5), transparent 70%),
+    radial-gradient(ellipse 60% 30% at 50% 0%, rgba(255, 180, 96, .22), transparent 75%);
+}
+
+/* Pulsing sodium ambience inside the tunnel */
+.tunnel-glow {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0;
+  mix-blend-mode: screen;
+  background: radial-gradient(ellipse at 50% 42%, rgba(255, 150, 60, .34), transparent 62%);
+}
+
+/* Curtain fabric swaying with the motion of the train */
+@keyframes curtain-sway {
+  from { transform: skewX(calc(var(--sway, 0) * -0.5deg)); }
+  to { transform: skewX(calc(var(--sway, 0) * 0.5deg)); }
+}
+
+/* Time-of-day moods for the moving foreground */
+.station--golden .near-field, .station--dusk .near-field { opacity: .38; }
+.station--night .near-field { opacity: .16; }
+.station--dusk .pole-strip { opacity: .4; }
+.station--night .pole-strip { opacity: .22; }
+
+/* Tunnel mood: darkened scenery, no vegetation, warm glass reflections */
+.station--tunnel .scene-stage { filter: brightness(.62) saturate(.85); transition: opacity 4s ease, filter 2s ease; }
+.station--tunnel .near-field, .station--tunnel .pole-strip { opacity: 0; }
+.station--tunnel .window-glass {
+  background: linear-gradient(135deg, rgba(255, 170, 80, .14), rgba(10, 10, 10, .3) 50%, rgba(255, 150, 60, .1));
+}
+
+/* At night the window turns into a dark, faintly warm mirror */
+.station--night .window-glass {
+  background: linear-gradient(135deg, rgba(255, 190, 120, .1), rgba(20, 26, 34, .22) 45%, rgba(255, 170, 90, .06) 80%);
+  box-shadow: inset 0 0 22px rgba(0, 0, 0, .5), 0 2px 4px rgba(0, 0, 0, .3);
 }

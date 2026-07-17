@@ -18,6 +18,8 @@ const CALAIS_STOP_MS = 5 * 60 * 1000
 const EPOCH = new Date('2026-07-15T05:30:00+02:00').getTime()
 const MUSIC_VOLUME_KEY = 'nightline.musicVolume'
 const TRAIN_VOLUME_KEY = 'nightline.trainVolume'
+const ROLLING_VOLUME_KEY = 'nightline.rollingVolume'
+const AMBIENCE_VOLUME_KEY = 'nightline.ambienceVolume'
 
 function loadVolume(key: string, fallback: number) {
   try {
@@ -36,6 +38,7 @@ interface Scene {
   at: number
   station?: boolean
   stopMs?: number
+  tunnel?: boolean
   daySrc: string
   dawnSrc?: string
   afternoonSrc?: string
@@ -79,7 +82,8 @@ const parisLondonScenes: Scene[] = [
     nightSrc: '/scenes/channel-tunnel-day-v2.png',
     label: 'The Channel Tunnel',
     detail: 'Under the English Channel',
-    at: 0.60
+    at: 0.60,
+    tunnel: true
   },
   { daySrc: '/scenes/kent-downs-day-v2.png', label: 'Kent Downs', detail: 'Kent · UK', at: 0.80 },
   { daySrc: '/scenes/london-st-pancras-day-v3.png', label: 'London St Pancras Intl', detail: 'Arrival platform · London', at: 0.975, station: true },
@@ -228,6 +232,13 @@ function formatDuration(ms: number) {
   return hours ? `${hours}h ${minutes.toString().padStart(2, '0')}m` : `${minutes} min`
 }
 
+// Which country's sound palette the current scene/station should use
+function getSceneLocale(scene: Scene): 'fr' | 'uk' | 'it' {
+  if (scene.label.includes('London') || scene.detail.endsWith('· UK')) return 'uk'
+  if (scene.label.includes('Milano') || scene.label.includes('Milan') || scene.detail.endsWith('· IT')) return 'it'
+  return 'fr'
+}
+
 function App() {
   const [now, setNow] = useState(Date.now())
   const [playing, setPlaying] = useState(false)
@@ -235,10 +246,11 @@ function App() {
   const [showJourney, setShowJourney] = useState(false)
   const [showMixer, setShowMixer] = useState(false)
   const [musicVolume, setMusicVolume] = useState(() => loadVolume(MUSIC_VOLUME_KEY, 62))
-  const [trainVolume, setTrainVolume] = useState(() => loadVolume(TRAIN_VOLUME_KEY, 55))
+  const [rollingVolume, setRollingVolume] = useState(() => loadVolume(ROLLING_VOLUME_KEY, loadVolume(TRAIN_VOLUME_KEY, 55)))
+  const [ambienceVolume, setAmbienceVolume] = useState(() => loadVolume(AMBIENCE_VOLUME_KEY, loadVolume(TRAIN_VOLUME_KEY, 55)))
   const audio = useRef<ReturnType<typeof createAudioEngine> | null>(null)
   const musicFadeTimer = useRef<number | null>(null)
-  
+
   // Landing screen vestibule states
   const [entered, setEntered] = useState(false)
   const [entering, setEntering] = useState(false)
@@ -259,6 +271,26 @@ function App() {
   const entryDragStartProgress = useRef(0)
   const entryDragged = useRef(false)
 
+  // Realism layer: DOM refs for the rAF-driven motion/light loop
+  const rigRef = useRef<HTMLDivElement>(null)
+  const worldRef = useRef<HTMLDivElement>(null)
+  const nearFieldRef = useRef<HTMLDivElement>(null)
+  const poleStripRef = useRef<HTMLDivElement>(null)
+  const tunnelStripsRef = useRef<HTMLDivElement>(null)
+  const lightBandsRef = useRef<HTMLDivElement>(null)
+  const tunnelGlowRef = useRef<HTMLDivElement>(null)
+
+  // Realism layer: mutable values shared with the frame loop
+  const speedTargetRef = useRef(0)
+  const joltRef = useRef(0)
+  const daylightRef = useRef(0)
+  const tunnelRef = useRef(false)
+  const enteredRef = useRef(false)
+  const reducedMotionRef = useRef(false)
+  const brakedRef = useRef(false)
+  const wasStoppedRef = useRef(false)
+  const prevSpeedRef = useRef(0)
+
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 1000)
     return () => window.clearInterval(timer)
@@ -275,9 +307,14 @@ function App() {
   }, [musicVolume])
 
   useEffect(() => {
-    audio.current?.setTrainVolume(trainVolume / 100)
-    try { window.localStorage.setItem(TRAIN_VOLUME_KEY, String(trainVolume)) } catch { /* storage unavailable */ }
-  }, [trainVolume])
+    audio.current?.setRollingVolume(rollingVolume / 100)
+    try { window.localStorage.setItem(ROLLING_VOLUME_KEY, String(rollingVolume)) } catch { /* storage unavailable */ }
+  }, [rollingVolume])
+
+  useEffect(() => {
+    audio.current?.setAmbienceVolume(ambienceVolume / 100)
+    try { window.localStorage.setItem(AMBIENCE_VOLUME_KEY, String(ambienceVolume)) } catch { /* storage unavailable */ }
+  }, [ambienceVolume])
 
   // Keep audio engine synchronized with windowOpen state changes
   useEffect(() => {
@@ -308,7 +345,7 @@ function App() {
     if (isDraggingWindow.current) {
       isDraggingWindow.current = false
       e.currentTarget.releasePointerCapture(e.pointerId)
-      
+
       const deltaY = Math.abs(e.clientY - windowDragStartY.current)
       if (deltaY < 5) {
         // Toggle window fully open/closed
@@ -340,7 +377,7 @@ function App() {
     if (isDraggingCurtain.current) {
       isDraggingCurtain.current = false
       e.currentTarget.releasePointerCapture(e.pointerId)
-      
+
       const deltaY = Math.abs(e.clientY - curtainDragStartY.current)
       if (deltaY < 5) {
         // Toggle curtain fully raised/lowered
@@ -393,7 +430,7 @@ function App() {
     const sceneIndex = currentScenes.length - 1 - currentIndex
     const departureSpeed = clamp((progress - 0.012) / 0.055)
     const arrivalSpeed = clamp((1 - progress) / 0.055)
-    
+
     let speedScale = Math.min(departureSpeed, arrivalSpeed)
     for (const station of timedStops) {
       const transition = 0.02
@@ -403,23 +440,152 @@ function App() {
         speedScale *= (progress - station.at) / transition
       }
     }
-    
+
     const speed = stopped || midRouteStopped ? 0 : speedScale
     return { elapsed, stopped, progress, remaining, arrival, speed, sceneIndex: Math.max(0, sceneIndex), scene: currentScenes[Math.max(0, sceneIndex)], midRouteStopped, intermediateStopRemaining }
   }, [now, currentRoute, legElapsed, routeLegMs, routeTravelMs])
 
   const isAtPlatform = journey.stopped || journey.midRouteStopped
   const departureCountdown = journey.midRouteStopped ? journey.intermediateStopRemaining : journey.remaining
-
-  // Keep audio engine synchronized with train moving state changes
-  useEffect(() => {
-    if (audio.current) {
-      audio.current.setTrainMoving(!journey.stopped && !journey.midRouteStopped)
-    }
-  }, [journey.stopped, journey.midRouteStopped])
+  const isTunnel = Boolean(journey.scene.tunnel)
+  const locale = getSceneLocale(journey.scene)
 
   const timeOfDay = useMemo(() => getTimeOfDay(new Date(now)), [now])
   const localTime = new Date(now).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+
+  // ---- Realism layer ---------------------------------------------------------
+  useEffect(() => {
+    const media = window.matchMedia('(prefers-reduced-motion: reduce)')
+    const update = () => { reducedMotionRef.current = media.matches }
+    update()
+    media.addEventListener('change', update)
+    return () => media.removeEventListener('change', update)
+  }, [])
+
+  useEffect(() => { enteredRef.current = entered }, [entered])
+  useEffect(() => { daylightRef.current = timeOfDay.daylight }, [timeOfDay.daylight])
+  useEffect(() => { tunnelRef.current = isTunnel }, [isTunnel])
+
+  // Feed live speed into the audio engine and fire travel one-shots
+  useEffect(() => {
+    speedTargetRef.current = journey.speed
+    const engine = audio.current
+    if (engine) {
+      engine.setSpeed(journey.speed)
+      const previous = prevSpeedRef.current
+      if (previous > 0.45 && journey.speed < 0.3 && !brakedRef.current) {
+        engine.playBrakes()
+        brakedRef.current = true
+      }
+      if (journey.speed > 0.55) brakedRef.current = false
+      if (wasStoppedRef.current && previous < 0.03 && journey.speed >= 0.03) engine.playDeparture()
+    }
+    prevSpeedRef.current = journey.speed
+  }, [journey.speed])
+
+  useEffect(() => {
+    wasStoppedRef.current = isAtPlatform
+    audio.current?.setAtPlatform(isAtPlatform)
+  }, [isAtPlatform])
+
+  useEffect(() => {
+    audio.current?.setTunnel(isTunnel)
+  }, [isTunnel])
+
+  useEffect(() => {
+    audio.current?.setLocale(locale)
+  }, [locale])
+
+  // One frame loop driving seamless parallax, carriage vibration and light play
+  useEffect(() => {
+    let raf = 0
+    let last = performance.now()
+    let speed = 0
+    let farX = 0
+    let nearX = 0
+    let poleX = 0
+    let stripX = 0
+    let bandX = 0
+    let frameW = 0
+    const seed = Math.random() * 100
+
+    const NEAR_TILE = 480
+    const POLE_TILE = 540
+    const STRIP_TILE = 460
+    const BAND_TILE = 560
+
+    const onResize = () => { frameW = 0 }
+    window.addEventListener('resize', onResize)
+
+    const tick = (t: number) => {
+      const dt = Math.min(0.05, (t - last) / 1000)
+      last = t
+      speed += (speedTargetRef.current - speed) * Math.min(1, dt * 1.4)
+      const reduced = reducedMotionRef.current
+      const motion = reduced ? 0 : speed
+
+      // Far scenery: seamless one-directional mirrored loop
+      const world = worldRef.current
+      if (world && enteredRef.current) {
+        if (!frameW) {
+          const frame = world.querySelector<HTMLElement>('.scene-frame')
+          if (frame) frameW = frame.offsetWidth
+        }
+        if (frameW) {
+          farX = (farX + dt * motion * 30) % (frameW * 2)
+          world.querySelectorAll<HTMLElement>('.scene-track').forEach((track) => {
+            track.style.transform = `translate3d(${-farX}px, 0, 0)`
+          })
+        }
+        // Scenery judder: the world rattles relative to the carriage
+        const jx = (Math.sin(t * 0.021) + Math.sin(t * 0.037 + 1.7) * 0.6) * motion * 0.9
+        const jy = (Math.sin(t * 0.027 + 0.6) + Math.sin(t * 0.043 + 2.4) * 0.6) * motion * 0.6
+        world.style.transform = `translate3d(${jx.toFixed(2)}px, ${jy.toFixed(2)}px, 0)`
+      }
+
+      // Foreground vegetation rushing past, catenary poles, tunnel light strips
+      nearX = (nearX + dt * motion * 340) % NEAR_TILE
+      if (nearFieldRef.current) nearFieldRef.current.style.transform = `translate3d(${-nearX}px, 0, 0)`
+      poleX = (poleX + dt * motion * 620) % POLE_TILE
+      if (poleStripRef.current) poleStripRef.current.style.transform = `translate3d(${-poleX}px, 0, 0)`
+      stripX = (stripX + dt * motion * 880) % STRIP_TILE
+      if (tunnelStripsRef.current) tunnelStripsRef.current.style.transform = `translate3d(${-stripX}px, 0, 0)`
+
+      // Sunlight flickering through trees across the interior
+      bandX = (bandX + dt * motion * 520) % BAND_TILE
+      const bands = lightBandsRef.current
+      if (bands) {
+        const base = daylightRef.current * motion * 0.75
+        const flicker = 0.72 + 0.28 * Math.sin(t * 0.011 + seed) + 0.12 * Math.sin(t * 0.029)
+        bands.style.opacity = (base * flicker).toFixed(3)
+        bands.style.backgroundPosition = `${-bandX}px 0`
+      }
+      const tunnelGlow = tunnelGlowRef.current
+      if (tunnelGlow) {
+        tunnelGlow.style.opacity = tunnelRef.current && !reduced
+          ? (0.06 + 0.05 * Math.sin(t * 0.03) * motion).toFixed(3)
+          : '0'
+      }
+
+      // Carriage vibration + rail-joint jolts synced with the click audio
+      const rig = rigRef.current
+      if (rig) {
+        joltRef.current *= Math.exp(-dt * 5.5)
+        const jolt = reduced ? 0 : joltRef.current
+        const amp = motion
+        const rx = (Math.sin(t * 0.023 + 0.9) + Math.sin(t * 0.041) * 0.5) * amp * 0.42 + (Math.random() - 0.5) * jolt * 1.1
+        const ry = (Math.sin(t * 0.029 + 2.1) + Math.sin(t * 0.047 + 1.2) * 0.5) * amp * 0.3 + (Math.random() - 0.5) * jolt * 0.8
+        const rr = Math.sin(t * 0.031 + 0.4) * 0.02 * amp + (Math.random() - 0.5) * jolt * 0.02
+        rig.style.transform = `translate3d(${rx.toFixed(2)}px, ${ry.toFixed(2)}px, 0) rotate(${rr.toFixed(3)}deg)`
+      }
+      raf = requestAnimationFrame(tick)
+    }
+    raf = requestAnimationFrame(tick)
+    return () => {
+      cancelAnimationFrame(raf)
+      window.removeEventListener('resize', onResize)
+    }
+  }, [])
 
   // Analog clock hands calculations
   const timeDate = new Date(now)
@@ -430,15 +596,29 @@ function App() {
   const minuteDeg = minutes * 6 + seconds * 0.1
   const secondDeg = seconds * 6
 
+  // Interior sunbeam: angle, strength and tint follow the time of day
+  const weights = timeOfDay.weights
+  const beamStrength = clamp(weights.day * 0.5 + weights.afternoon * 0.42 + weights.golden * 0.8 + weights.dawn * 0.45 + weights.dusk * 0.12) * (isTunnel ? 0.1 : 1)
+  const beamAngle = 10 + weights.dawn * 14 + weights.day * 10 - weights.golden * 5 + weights.dusk * 8
+  const beamColor = weights.golden > 0.35 ? '255, 178, 102' : weights.dawn > 0.4 ? '255, 205, 150' : weights.dusk > 0.3 ? '255, 160, 110' : '255, 240, 205'
+  const lampOpacity = clamp((1 - timeOfDay.daylight) * 0.85 + (isTunnel ? 0.35 : 0))
+
   const ensureAudio = () => {
     let engine = audio.current
     if (!engine) {
       engine = createAudioEngine(setAudioSource)
       audio.current = engine
       engine.setMusicVolume(musicVolume / 100)
-      engine.setTrainVolume(trainVolume / 100)
+      engine.setRollingVolume(rollingVolume / 100)
+      engine.setAmbienceVolume(ambienceVolume / 100)
       engine.setWindowOpen(windowOpen / 100)
-      engine.setTrainMoving(!journey.stopped && !journey.midRouteStopped)
+      engine.setSpeed(journey.speed)
+      engine.setAtPlatform(isAtPlatform)
+      engine.setTunnel(isTunnel)
+      engine.setLocale(locale)
+      engine.onRailClick = (strength) => {
+        joltRef.current = Math.min(0.9, joltRef.current + strength * 0.7)
+      }
     }
     if (engine.context.state === 'suspended') void engine.context.resume()
     return engine
@@ -495,7 +675,7 @@ function App() {
         engine.setMusicVolume(musicVolume / 100)
       }, 1200)
     }
-    
+
     // Match CSS transition timing (1.4s) before unmounting overlay
     setTimeout(() => {
       setEntered(true)
@@ -543,7 +723,7 @@ function App() {
 
   return (
     <main
-      className={`station station--${timeOfDay.phase} ${!entered ? 'station--not-entered' : ''} ${entering ? 'station--entering' : ''}`}
+      className={`station station--${timeOfDay.phase} ${isTunnel ? 'station--tunnel' : ''} ${!entered ? 'station--not-entered' : ''} ${entering ? 'station--entering' : ''}`}
       style={{ '--entry-reveal': entryProgress } as React.CSSProperties}
     >
       {!entered && (
@@ -580,138 +760,171 @@ function App() {
           </div>
         </div>
       )}
-      <div
-        className={`world ${journey.stopped || journey.midRouteStopped ? 'world--stopped' : ''} ${journey.scene.station ? 'world--platform' : ''}`}
-        style={{
-          '--scene-brightness': 0.4 + timeOfDay.daylight * 0.6,
-          '--scene-saturation': 0.72 + timeOfDay.daylight * 0.28,
-          '--scene-sepia': timeOfDay.warmth * 0.16,
-          '--speed-opacity': journey.speed * 0.17,
-        } as React.CSSProperties}
-        aria-hidden="true"
-      >
-        {currentRoute.scenes.map((scene, index) => (entered || entering) && Math.abs(index - journey.sceneIndex) <= 1 && (
-          <div
-            className={`scene-stage ${scene.station ? 'scene-stage--station' : ''}`}
-            key={scene.label}
-            style={{ opacity: sceneOpacity(journey.progress, index, currentRoute.scenes) }}
-          >
-            {SCENE_PHASES.map((phase) => {
-              const opacity = timeOfDay.weights[phase]
-              if (opacity === 0) return null
-              const hasDedicatedAsset = phase === 'day' || Boolean(scene[`${phase}Src` as keyof Scene])
-              return (
-                <div
-                  className={`scene scene--${phase} ${hasDedicatedAsset ? '' : `scene--fallback-${phase}`}`}
-                  key={phase}
-                  style={{
-                    backgroundImage: `url(${getSceneSrcForPhase(scene, phase)})`,
-                    opacity,
-                    '--drift': `${-3 - index * 0.7}%`,
-                  } as React.CSSProperties}
-                />
-              )
-            })}
-          </div>
-        ))}
-        <div className="night-wash" style={{ opacity: (1 - timeOfDay.daylight) * 0.24 }} />
-        <div className="golden-wash" style={{ opacity: timeOfDay.warmth * 0.2 }} />
-        <div className="speed-lines" />
-      </div>
 
-      <div className="carriage-wrapper">
-        <img className="carriage" src="/train-carriage.webp" alt="Cozy train compartment looking onto the journey" />
-        
-        {/* Wall Mounted Retro-Modern Screen */}
-        <section className="trip-card trip-card--wall">
-          <div className="eyebrow">{isAtPlatform ? 'NOW AT PLATFORM' : 'CURRENT JOURNEY'}</div>
-          <div className="route-title">
-            <div><strong>{currentRoute.fromCode}</strong><span>{currentRoute.fromName}</span></div>
-            <div className="route-line"><i /><Route size={18} /><i /></div>
-            <div className="align-right"><strong>{currentRoute.toCode}</strong><span>{currentRoute.toName}</span></div>
-          </div>
-          <div className="progress-track"><span style={{ width: `${journey.progress * 100}%` }}><i /></span></div>
-          <div className="trip-meta">
-            <div><MapPin size={15} /><span><small>{isAtPlatform ? 'NOW AT' : 'NOW PASSING'}</small>{journey.scene.detail}</span></div>
-            <div className="align-right"><small>{isAtPlatform ? 'DEPARTING AGAIN' : 'ARRIVAL'}</small><b>{isAtPlatform ? formatDuration(departureCountdown) : journey.arrival.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</b></div>
-          </div>
-        </section>
-        
-        {/* Vintage Analog Wall Clock */}
-        <div className="analog-clock">
-          <div className="clock-dial">
-            <div className="clock-hand clock-hand--hour" style={{ transform: `rotate(${hourDeg}deg)` }} />
-            <div className="clock-hand clock-hand--minute" style={{ transform: `rotate(${minuteDeg}deg)` }} />
-            <div className="clock-hand clock-hand--second" style={{ transform: `rotate(${secondDeg}deg)` }} />
-            <div className="clock-center-pin" />
-            <div className="clock-markers">
-              <span className="marker-12" />
-              <span className="marker-3" />
-              <span className="marker-6" />
-              <span className="marker-9" />
-            </div>
-          </div>
-        </div>
-
-        {/* Radio integrated into the left wood wall on desktop */}
-        <section className={`wall-radio ${playing ? 'wall-radio--playing' : ''}`} aria-label="Nightline wall radio">
-          <div className="wall-radio__case">
-            <div className="wall-radio__speaker" aria-hidden="true">
-              {Array.from({ length: 30 }, (_, index) => <i key={index} />)}
-            </div>
-            <div className="wall-radio__panel">
-              <div className="wall-radio__brand"><span>NIGHTLINE</span><small>LOFI · LIVE</small></div>
-              <div className="wall-radio__dial" aria-hidden="true"><span /></div>
-              <div className="wall-radio__track">
-                <span className="wall-radio__signal" />
-                <div><small>{playing ? 'ON AIR' : 'RADIO OFF'}</small><strong>{audioSource === 'radio' ? 'Chilling' : timeOfDay.track}</strong></div>
-              </div>
-              <div className="wall-radio__controls">
-                <button type="button" onClick={() => void playMusic()} disabled={playing} aria-label="Play radio"><Play fill="currentColor" size={13} /></button>
-                <button type="button" onClick={stopMusic} disabled={!playing} aria-label="Stop radio"><Square fill="currentColor" size={11} /></button>
-                <label>
-                  <Volume2 size={13} aria-hidden="true" />
-                  <input aria-label="Radio volume" type="range" min="0" max="100" value={musicVolume} onChange={(event) => setMusicVolume(Number(event.target.value))} />
-                </label>
-              </div>
-            </div>
-          </div>
-          <span className="wall-radio__mount wall-radio__mount--left" aria-hidden="true" />
-          <span className="wall-radio__mount wall-radio__mount--right" aria-hidden="true" />
-        </section>
-        
-        {/* Sliding Window Glass Overlay */}
-        <div className="window-container">
-          <div
-            className="window-glass"
-            style={{ transform: `translateY(${(windowOpen / 100) * 86}%)` }}
-            onPointerDown={handleWindowPointerDown}
-            onPointerMove={handleWindowPointerMove}
-            onPointerUp={handleWindowPointerUp}
-            aria-label="Train window glass, drag or tap handle to slide open/close"
-          >
-            <div className="window-handle" />
-          </div>
-        </div>
-
-        {/* Pull-down Fabric Curtain Overlay */}
-        <div className="curtain-container">
-          <div
-            className="curtain-fabric"
-            style={{ height: `${curtainHeight}%` }}
-          >
+      <div className="rig" ref={rigRef}>
+        <div
+          className={`world ${journey.stopped || journey.midRouteStopped ? 'world--stopped' : ''} ${journey.scene.station ? 'world--platform' : ''} ${entered ? 'world--live' : ''}`}
+          ref={worldRef}
+          style={{
+            '--scene-brightness': 0.4 + timeOfDay.daylight * 0.6,
+            '--scene-saturation': 0.72 + timeOfDay.daylight * 0.28,
+            '--scene-sepia': timeOfDay.warmth * 0.16,
+            '--speed-opacity': journey.speed * 0.17,
+          } as React.CSSProperties}
+          aria-hidden="true"
+        >
+          {currentRoute.scenes.map((scene, index) => (entered || entering) && Math.abs(index - journey.sceneIndex) <= 1 && (
             <div
-              className="curtain-pullbar"
-              onPointerDown={handleCurtainPointerDown}
-              onPointerMove={handleCurtainPointerMove}
-              onPointerUp={handleCurtainPointerUp}
-              aria-label="Curtain pull-bar, drag or tap to raise/lower"
+              className={`scene-stage ${scene.station ? 'scene-stage--station' : ''}`}
+              key={scene.label}
+              style={{ opacity: sceneOpacity(journey.progress, index, currentRoute.scenes) }}
             >
-              <div className="curtain-ring" />
+              <div className="scene-track">
+                {[false, true, false, true].map((mirror, frameIndex) => (
+                  <div className={`scene-frame ${mirror ? 'scene-frame--mirror' : ''}`} key={frameIndex}>
+                    {SCENE_PHASES.map((phase) => {
+                      const opacity = timeOfDay.weights[phase]
+                      if (opacity === 0) return null
+                      const hasDedicatedAsset = phase === 'day' || Boolean(scene[`${phase}Src` as keyof Scene])
+                      return (
+                        <div
+                          className={`scene scene--${phase} ${hasDedicatedAsset ? '' : `scene--fallback-${phase}`}`}
+                          key={phase}
+                          style={{
+                            backgroundImage: `url(${getSceneSrcForPhase(scene, phase)})`,
+                            opacity,
+                          }}
+                        />
+                      )
+                    })}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+          <div className="near-field" ref={nearFieldRef} />
+          <div className="pole-strip" ref={poleStripRef} />
+          <div className="tunnel-strips" ref={tunnelStripsRef} />
+          <div className="night-wash" style={{ opacity: (1 - timeOfDay.daylight) * 0.24 }} />
+          <div className="golden-wash" style={{ opacity: timeOfDay.warmth * 0.2 }} />
+          <div className="speed-lines" />
+        </div>
+
+        <div
+          className="carriage-wrapper"
+          style={{ '--sway': (journey.speed * 1.6).toFixed(3) } as React.CSSProperties}
+        >
+          <img className="carriage" src="/train-carriage.webp" alt="Cozy train compartment looking onto the journey" />
+
+          {/* Wall Mounted Retro-Modern Screen */}
+          <section className="trip-card trip-card--wall">
+            <div className="eyebrow">{isAtPlatform ? 'NOW AT PLATFORM' : 'CURRENT JOURNEY'}</div>
+            <div className="route-title">
+              <div><strong>{currentRoute.fromCode}</strong><span>{currentRoute.fromName}</span></div>
+              <div className="route-line"><i /><Route size={18} /><i /></div>
+              <div className="align-right"><strong>{currentRoute.toCode}</strong><span>{currentRoute.toName}</span></div>
+            </div>
+            <div className="progress-track"><span style={{ width: `${journey.progress * 100}%` }}><i /></span></div>
+            <div className="trip-meta">
+              <div><MapPin size={15} /><span><small>{isAtPlatform ? 'NOW AT' : 'NOW PASSING'}</small>{journey.scene.detail}</span></div>
+              <div className="align-right"><small>{isAtPlatform ? 'DEPARTING AGAIN' : 'ARRIVAL'}</small><b>{isAtPlatform ? formatDuration(departureCountdown) : journey.arrival.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</b></div>
+            </div>
+          </section>
+
+          {/* Vintage Analog Wall Clock */}
+          <div className="analog-clock">
+            <div className="clock-dial">
+              <div className="clock-hand clock-hand--hour" style={{ transform: `rotate(${hourDeg}deg)` }} />
+              <div className="clock-hand clock-hand--minute" style={{ transform: `rotate(${minuteDeg}deg)` }} />
+              <div className="clock-hand clock-hand--second" style={{ transform: `rotate(${secondDeg}deg)` }} />
+              <div className="clock-center-pin" />
+              <div className="clock-markers">
+                <span className="marker-12" />
+                <span className="marker-3" />
+                <span className="marker-6" />
+                <span className="marker-9" />
+              </div>
+            </div>
+          </div>
+
+          {/* Radio integrated into the left wood wall on desktop */}
+          <section className={`wall-radio ${playing ? 'wall-radio--playing' : ''}`} aria-label="Nightline wall radio">
+            <div className="wall-radio__case">
+              <div className="wall-radio__speaker" aria-hidden="true">
+                {Array.from({ length: 30 }, (_, index) => <i key={index} />)}
+              </div>
+              <div className="wall-radio__panel">
+                <div className="wall-radio__brand"><span>NIGHTLINE</span><small>LOFI · LIVE</small></div>
+                <div className="wall-radio__dial" aria-hidden="true"><span /></div>
+                <div className="wall-radio__track">
+                  <span className="wall-radio__signal" />
+                  <div><small>{playing ? 'ON AIR' : 'RADIO OFF'}</small><strong>{audioSource === 'radio' ? 'Chilling' : timeOfDay.track}</strong></div>
+                </div>
+                <div className="wall-radio__controls">
+                  <button type="button" onClick={() => void playMusic()} disabled={playing} aria-label="Play radio"><Play fill="currentColor" size={13} /></button>
+                  <button type="button" onClick={stopMusic} disabled={!playing} aria-label="Stop radio"><Square fill="currentColor" size={11} /></button>
+                  <label>
+                    <Volume2 size={13} aria-hidden="true" />
+                    <input aria-label="Radio volume" type="range" min="0" max="100" value={musicVolume} onChange={(event) => setMusicVolume(Number(event.target.value))} />
+                  </label>
+                </div>
+              </div>
+            </div>
+            <span className="wall-radio__mount wall-radio__mount--left" aria-hidden="true" />
+            <span className="wall-radio__mount wall-radio__mount--right" aria-hidden="true" />
+          </section>
+
+          {/* Sliding Window Glass Overlay */}
+          <div className="window-container">
+            <div
+              className="window-glass"
+              style={{ transform: `translateY(${(windowOpen / 100) * 86}%)` }}
+              onPointerDown={handleWindowPointerDown}
+              onPointerMove={handleWindowPointerMove}
+              onPointerUp={handleWindowPointerUp}
+              aria-label="Train window glass, drag or tap handle to slide open/close"
+            >
+              <div className="window-handle" />
+            </div>
+          </div>
+
+          {/* Pull-down Fabric Curtain Overlay */}
+          <div className="curtain-container">
+            <div
+              className="curtain-fabric"
+              style={{ height: `${curtainHeight}%` }}
+            >
+              <div
+                className="curtain-pullbar"
+                onPointerDown={handleCurtainPointerDown}
+                onPointerMove={handleCurtainPointerMove}
+                onPointerUp={handleCurtainPointerUp}
+                aria-label="Curtain pull-bar, drag or tap to raise/lower"
+              >
+                <div className="curtain-ring" />
+              </div>
             </div>
           </div>
         </div>
+
+        {/* Interior light play: sunbeam, dust, flicker bands, lamps, tunnel glow */}
+        <div
+          className="sunbeam"
+          style={{
+            '--beam-opacity': beamStrength.toFixed(3),
+            '--beam-angle': `${beamAngle.toFixed(1)}deg`,
+            '--beam-color': beamColor,
+          } as React.CSSProperties}
+          aria-hidden="true"
+        />
+        <div className="dust" style={{ opacity: (beamStrength * 0.9).toFixed(3) }} aria-hidden="true">
+          {Array.from({ length: 9 }, (_, i) => <i key={i} style={{ '--i': i } as React.CSSProperties} />)}
+        </div>
+        <div className="light-bands" ref={lightBandsRef} aria-hidden="true" />
+        <div className="tunnel-glow" ref={tunnelGlowRef} aria-hidden="true" />
+        <div className="lamp-glow" style={{ opacity: lampOpacity.toFixed(3) }} aria-hidden="true" />
       </div>
+
       <div className="vignette" aria-hidden="true" />
       <div className="grain" aria-hidden="true" />
 
@@ -760,8 +973,12 @@ function App() {
           <input aria-label="Music volume" type="range" min="0" max="100" value={musicVolume} onChange={(event) => setMusicVolume(Number(event.target.value))} />
         </label>
         <label>
-          <span><b>Train ambience</b><em>{trainVolume}%</em></span>
-          <input aria-label="Train ambience volume" type="range" min="0" max="100" value={trainVolume} onChange={(event) => setTrainVolume(Number(event.target.value))} />
+          <span><b>Rolling</b><em>{rollingVolume}%</em></span>
+          <input aria-label="Rolling sound volume — wheels, track and rumble" type="range" min="0" max="100" value={rollingVolume} onChange={(event) => setRollingVolume(Number(event.target.value))} />
+        </label>
+        <label>
+          <span><b>Ambience</b><em>{ambienceVolume}%</em></span>
+          <input aria-label="Ambience volume — wind, voices, stations" type="range" min="0" max="100" value={ambienceVolume} onChange={(event) => setAmbienceVolume(Number(event.target.value))} />
         </label>
       </section>
 
