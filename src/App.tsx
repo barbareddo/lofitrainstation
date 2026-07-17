@@ -71,8 +71,8 @@ const milanoParisScenes: Scene[] = [
 
 const parisLondonScenes: Scene[] = [
   { ...milanoParisScenes[milanoParisScenes.length - 1], detail: 'Departure platform · Paris', at: 0 },
-  { daySrc: '/scenes/picardy-countryside-day-v2.png', label: 'Picardy Countryside', detail: 'Hauts-de-France · FR', at: 0.20 },
-  { daySrc: '/scenes/calais-terminal-day-v3.png', label: 'Calais-Fréthun Terminal', detail: 'Eurotunnel Port · Calais', at: 0.45, station: true, stopMs: CALAIS_STOP_MS },
+  { daySrc: '/scenes/picardy-countryside-day-v2.png', dawnSrc: '/scenes/picardy-countryside-dawn.jpg', afternoonSrc: '/scenes/picardy-countryside-afternoon.jpg', goldenSrc: '/scenes/picardy-countryside-golden.jpg', duskSrc: '/scenes/picardy-countryside-dusk.jpg', nightSrc: '/scenes/picardy-countryside-night.jpg', label: 'Picardy Countryside', detail: 'Hauts-de-France · FR', at: 0.20 },
+  { daySrc: '/scenes/calais-terminal-day-v3.png', dawnSrc: '/scenes/calais-terminal-dawn.jpg', afternoonSrc: '/scenes/calais-terminal-afternoon.jpg', goldenSrc: '/scenes/calais-terminal-golden.jpg', duskSrc: '/scenes/calais-terminal-dusk.jpg', nightSrc: '/scenes/calais-terminal-night.jpg', label: 'Calais-Fréthun Terminal', detail: 'Eurotunnel Port · Calais', at: 0.45, station: true, stopMs: CALAIS_STOP_MS },
   {
     daySrc: '/scenes/channel-tunnel-day-v2.png',
     dawnSrc: '/scenes/channel-tunnel-day-v2.png',
@@ -85,8 +85,8 @@ const parisLondonScenes: Scene[] = [
     at: 0.60,
     tunnel: true
   },
-  { daySrc: '/scenes/kent-downs-day-v2.png', label: 'Kent Downs', detail: 'Kent · UK', at: 0.80 },
-  { daySrc: '/scenes/london-st-pancras-day-v3.png', label: 'London St Pancras Intl', detail: 'Arrival platform · London', at: 0.975, station: true },
+  { daySrc: '/scenes/kent-downs-day-v2.png', dawnSrc: '/scenes/kent-downs-dawn.jpg', afternoonSrc: '/scenes/kent-downs-afternoon.jpg', goldenSrc: '/scenes/kent-downs-golden.jpg', duskSrc: '/scenes/kent-downs-dusk.jpg', nightSrc: '/scenes/kent-downs-night.jpg', label: 'Kent Downs', detail: 'Kent · UK', at: 0.80 },
+  { daySrc: '/scenes/london-st-pancras-day-v3.png', dawnSrc: '/scenes/london-st-pancras-dawn.jpg', afternoonSrc: '/scenes/london-st-pancras-afternoon.jpg', goldenSrc: '/scenes/london-st-pancras-golden.jpg', duskSrc: '/scenes/london-st-pancras-dusk.jpg', nightSrc: '/scenes/london-st-pancras-night.jpg', label: 'London St Pancras Intl', detail: 'Arrival platform · London', at: 0.975, station: true },
 ]
 
 function reverseScenes(scenes: Scene[], departureDetail: string, arrivalDetail: string): Scene[] {
