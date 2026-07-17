@@ -12,6 +12,7 @@ import Square from 'lucide-react/dist/esm/icons/square.mjs'
 import Volume2 from 'lucide-react/dist/esm/icons/volume-2.mjs'
 import { createAudioEngine, type AudioSource } from './audio'
 import { PassingTrain } from './PassingTrain'
+import { CargoTrain } from './CargoTrain'
 
 const TRAVEL_MS = 4 * 60 * 60 * 1000
 const STOP_MS = 8 * 60 * 1000
@@ -279,17 +280,23 @@ function App() {
   const poleStripRef = useRef<HTMLDivElement>(null)
   const tunnelStripsRef = useRef<HTMLDivElement>(null)
   const lightBandsRef = useRef<HTMLDivElement>(null)
+  const tracksideShadowsRef = useRef<HTMLDivElement>(null)
   const tunnelGlowRef = useRef<HTMLDivElement>(null)
   const reflectionRef = useRef<HTMLDivElement>(null)
+  const glassSurfaceRef = useRef<HTMLDivElement>(null)
 
   // Passing train on the far track: visual streak synced with the audio event
   const [passingTrain, setPassingTrain] = useState<{ key: number; duration: number; kind: 'passenger' | 'cargo' } | null>(null)
   const passingTrainTimer = useRef<number | null>(null)
+  const passingStartRef = useRef(0)
+  const passingDurationRef = useRef(0)
+  const passingKindRef = useRef<'passenger' | 'cargo'>('passenger')
 
   // Realism layer: mutable values shared with the frame loop
   const speedTargetRef = useRef(0)
   const joltRef = useRef(0)
   const daylightRef = useRef(0)
+  const windowOpenRef = useRef(0)
   const tunnelRef = useRef(false)
   const enteredRef = useRef(false)
   const reducedMotionRef = useRef(false)
@@ -304,6 +311,7 @@ function App() {
 
   useEffect(() => () => {
     if (musicFadeTimer.current !== null) window.clearTimeout(musicFadeTimer.current)
+    if (passingTrainTimer.current !== null) window.clearTimeout(passingTrainTimer.current)
     audio.current?.stop()
   }, [])
 
@@ -470,6 +478,7 @@ function App() {
 
   useEffect(() => { enteredRef.current = entered }, [entered])
   useEffect(() => { daylightRef.current = timeOfDay.daylight }, [timeOfDay.daylight])
+  useEffect(() => { windowOpenRef.current = windowOpen / 100 }, [windowOpen])
   useEffect(() => { tunnelRef.current = isTunnel }, [isTunnel])
 
   // Warm the browser cache with the active route's scene images so scenery
@@ -535,6 +544,7 @@ function App() {
     let poleX = 0
     let stripX = 0
     let bandX = 0
+    let shadowX = 0
     let frameW = 0
     let reflLevel = 0
     const seed = Math.random() * 100
@@ -543,6 +553,7 @@ function App() {
     const POLE_TILE = 540
     const STRIP_TILE = 460
     const BAND_TILE = 560
+    const SHADOW_TILE = 760
 
     const onResize = () => { frameW = 0 }
     window.addEventListener('resize', onResize)
@@ -590,6 +601,14 @@ function App() {
         bands.style.opacity = (base * flicker).toFixed(3)
         bands.style.backgroundPosition = `${-bandX}px 0`
       }
+      shadowX = (shadowX + dt * motion * 610) % SHADOW_TILE
+      const shadows = tracksideShadowsRef.current
+      if (shadows) {
+        const daylight = daylightRef.current
+        const shadowStrength = motion * (0.055 + daylight * 0.17)
+        shadows.style.opacity = reduced ? '0' : shadowStrength.toFixed(3)
+        shadows.style.backgroundPosition = `${-shadowX}px 0`
+      }
       const tunnelGlow = tunnelGlowRef.current
       if (tunnelGlow) {
         tunnelGlow.style.opacity = tunnelRef.current && !reduced
@@ -601,9 +620,16 @@ function App() {
       // in tunnels — you still see the landscape through it
       const reflection = reflectionRef.current
       if (reflection) {
-        const target = (1 - daylightRef.current) * 0.14 + (tunnelRef.current ? 0.12 : 0)
+        const closed = 1 - windowOpenRef.current
+        const target = ((1 - daylightRef.current) * 0.2 + (tunnelRef.current ? 0.16 : 0)) * closed
         reflLevel += (target - reflLevel) * Math.min(1, dt * 2.5)
         reflection.style.opacity = reflLevel.toFixed(3)
+      }
+      const glassSurface = glassSurfaceRef.current
+      if (glassSurface) {
+        const closed = 1 - windowOpenRef.current
+        glassSurface.style.opacity = (closed * (0.1 + (1 - daylightRef.current) * 0.16)).toFixed(3)
+        glassSurface.style.backgroundPosition = `${Math.sin(t * 0.00012) * 24}% ${Math.cos(t * 0.00009) * 18}%`
       }
 
       // Carriage vibration + rail-joint jolts synced with the click audio
@@ -611,10 +637,17 @@ function App() {
       if (rig) {
         joltRef.current *= Math.exp(-dt * 5.5)
         const jolt = reduced ? 0 : joltRef.current
+        const passProgress = passingDurationRef.current > 0
+          ? (t - passingStartRef.current) / passingDurationRef.current
+          : 2
+        const passEnvelope = passProgress >= 0 && passProgress <= 1
+          ? Math.pow(Math.sin(Math.PI * passProgress), passingKindRef.current === 'cargo' ? 1.35 : 2.2)
+          : 0
+        const passShake = reduced ? 0 : passEnvelope * (passingKindRef.current === 'cargo' ? 0.85 : 1.25)
         const amp = motion
-        const rx = (Math.sin(t * 0.023 + 0.9) + Math.sin(t * 0.041) * 0.5) * amp * 0.42 + (Math.random() - 0.5) * jolt * 1.1
-        const ry = (Math.sin(t * 0.029 + 2.1) + Math.sin(t * 0.047 + 1.2) * 0.5) * amp * 0.3 + (Math.random() - 0.5) * jolt * 0.8
-        const rr = Math.sin(t * 0.031 + 0.4) * 0.02 * amp + (Math.random() - 0.5) * jolt * 0.02
+        const rx = (Math.sin(t * 0.023 + 0.9) + Math.sin(t * 0.041) * 0.5) * amp * 0.42 + (Math.random() - 0.5) * (jolt * 1.1 + passShake)
+        const ry = (Math.sin(t * 0.029 + 2.1) + Math.sin(t * 0.047 + 1.2) * 0.5) * amp * 0.3 + (Math.random() - 0.5) * (jolt * 0.8 + passShake * 0.62)
+        const rr = Math.sin(t * 0.031 + 0.4) * 0.02 * amp + (Math.random() - 0.5) * (jolt * 0.02 + passShake * 0.012)
         rig.style.transform = `translate3d(${rx.toFixed(2)}px, ${ry.toFixed(2)}px, 0) rotate(${rr.toFixed(3)}deg)`
       }
       raf = requestAnimationFrame(tick)
@@ -661,6 +694,9 @@ function App() {
       engine.onPassingTrain = (duration, kind) => {
         if (reducedMotionRef.current) return
         if (passingTrainTimer.current !== null) window.clearTimeout(passingTrainTimer.current)
+        passingStartRef.current = performance.now()
+        passingDurationRef.current = duration * 1000
+        passingKindRef.current = kind
         setPassingTrain({ key: Date.now(), duration, kind })
         passingTrainTimer.current = window.setTimeout(() => setPassingTrain(null), duration * 1000 + 500)
       }
@@ -768,7 +804,7 @@ function App() {
 
   return (
     <main
-      className={`station station--${timeOfDay.phase} ${isTunnel ? 'station--tunnel' : ''} ${!entered ? 'station--not-entered' : ''} ${entering ? 'station--entering' : ''}`}
+      className={`station station--${timeOfDay.phase} ${isTunnel ? 'station--tunnel' : ''} ${passingTrain ? `station--train-passing station--train-passing-${passingTrain.kind}` : ''} ${!entered ? 'station--not-entered' : ''} ${entering ? 'station--entering' : ''}`}
       style={{ '--entry-reveal': entryProgress } as React.CSSProperties}
     >
       {!entered && (
@@ -853,29 +889,31 @@ function App() {
           <div className="night-wash" style={{ opacity: (1 - timeOfDay.daylight) * 0.24 }} />
           <div className="golden-wash" style={{ opacity: timeOfDay.warmth * 0.2 }} />
           <div className="speed-lines" />
-          {passingTrain && (
-            <div
-              key={passingTrain.key}
-              className={`passing-train passing-train--${passingTrain.kind}`}
-              style={{ animationDuration: `${passingTrain.duration}s` }}
-              aria-hidden="true"
-            >
-              {passingTrain.kind === 'passenger' ? (
-                <PassingTrain litOpacity={0.25 + (1 - timeOfDay.daylight) * 0.75} />
-              ) : (
-                <>
-                  <div className="passing-train__body" />
-                  <div className="passing-train__lights" style={{ opacity: 0.3 + (1 - timeOfDay.daylight) * 0.7 }} />
-                </>
-              )}
-            </div>
-          )}
         </div>
 
         <div
           className="carriage-wrapper"
-          style={{ '--sway': (journey.speed * 1.6).toFixed(3) } as React.CSSProperties}
+          style={{
+            '--sway': (journey.speed * 1.6).toFixed(3),
+            '--curtain-angle': `${(0.45 + journey.speed * 0.55 + (windowOpen / 100) * 1.7).toFixed(2)}deg`,
+            '--curtain-period': `${(5.6 - journey.speed * 1.5 - (windowOpen / 100) * 2.1).toFixed(2)}s`,
+          } as React.CSSProperties}
         >
+          {passingTrain && (
+            <div className="passing-train-viewport" aria-hidden="true">
+              <div
+                key={passingTrain.key}
+                className={`passing-train passing-train--${passingTrain.kind}`}
+                style={{ animationDuration: `${passingTrain.duration}s` }}
+              >
+                {passingTrain.kind === 'passenger' ? (
+                  <PassingTrain lightLevel={Math.pow(1 - timeOfDay.daylight, 1.6)} />
+                ) : (
+                  <CargoTrain lightLevel={Math.pow(1 - timeOfDay.daylight, 1.35)} />
+                )}
+              </div>
+            </div>
+          )}
           <img className="carriage" src="/train-carriage.webp" alt="Cozy train compartment looking onto the journey" />
 
           {/* Wall Mounted Retro-Modern Screen */}
@@ -947,6 +985,7 @@ function App() {
               aria-label="Train window glass, drag or tap handle to slide open/close"
             >
               <div className="window-reflection" ref={reflectionRef} aria-hidden="true" />
+              <div className="window-surface" ref={glassSurfaceRef} aria-hidden="true" />
               <div className="window-handle" />
             </div>
           </div>
@@ -984,8 +1023,32 @@ function App() {
           {Array.from({ length: 9 }, (_, i) => <i key={i} style={{ '--i': i } as React.CSSProperties} />)}
         </div>
         <div className="light-bands" ref={lightBandsRef} aria-hidden="true" />
+        <div className="trackside-shadows" ref={tracksideShadowsRef} aria-hidden="true" />
         <div className="tunnel-glow" ref={tunnelGlowRef} aria-hidden="true" />
         <div className="lamp-glow" style={{ opacity: lampOpacity.toFixed(3) }} aria-hidden="true" />
+        <div
+          className="cabin-grade"
+          style={{
+            '--night-level': (1 - timeOfDay.daylight).toFixed(3),
+            '--warm-level': timeOfDay.warmth.toFixed(3),
+          } as React.CSSProperties}
+          aria-hidden="true"
+        />
+        {passingTrain && (
+          <div
+            key={`cabin-${passingTrain.key}`}
+            className={`passing-cabin-effects passing-cabin-effects--${passingTrain.kind}`}
+            style={{
+              animationDuration: `${passingTrain.duration}s`,
+              '--passing-light': (0.1 + Math.pow(1 - timeOfDay.daylight, 1.35) * 0.42).toFixed(3),
+            } as React.CSSProperties}
+            aria-hidden="true"
+          >
+            <i className="passing-cabin-effects__shadow" />
+            <i className="passing-cabin-effects__light" />
+            <i className="passing-cabin-effects__glass" />
+          </div>
+        )}
       </div>
 
       <div className="vignette" aria-hidden="true" />

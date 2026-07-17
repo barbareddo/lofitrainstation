@@ -612,36 +612,82 @@ export function createAudioEngine(onSourceChange?: (source: AudioSource) => void
     // Freight consists are longer and slower: a deep, drawn-out rumble instead
     // of the bright whoosh of a passenger train.
     const dur = cargo ? rand(4.5, 7) : rand(4.6, 5.4)
+    const openness = 0.62 + windowOpenVal * 0.72
     const src = context.createBufferSource()
     src.buffer = white
-    const filter = context.createBiquadFilter()
-    filter.type = 'bandpass'
-    filter.Q.value = 0.9
-    filter.frequency.setValueAtTime(cargo ? 150 : 260, at)
-    filter.frequency.exponentialRampToValueAtTime(cargo ? rand(380, 520) : 1500, at + dur * 0.45)
-    filter.frequency.exponentialRampToValueAtTime(cargo ? 130 : 240, at + dur)
-    const g = context.createGain()
-    g.gain.setValueAtTime(0.0001, at)
-    g.gain.linearRampToValueAtTime(cargo ? rand(0.04, 0.055) : rand(0.05, 0.075), at + dur * 0.45)
-    g.gain.exponentialRampToValueAtTime(0.0001, at + dur)
+    src.playbackRate.setValueCurveAtTime(new Float32Array([1.13, 1.09, 1.03, 0.97, 0.9, 0.84]), at, dur)
+
+    // Two layers: a low body/rail roar and a brighter skin-of-the-train rush.
+    // The cabin low-pass opens with the physical window.
+    const bodyFilter = context.createBiquadFilter()
+    bodyFilter.type = 'bandpass'
+    bodyFilter.Q.value = cargo ? 0.72 : 0.9
+    bodyFilter.frequency.setValueCurveAtTime(
+      cargo
+        ? new Float32Array([105, 165, 320, 240, 120])
+        : new Float32Array([430, 880, 1450, 820, 310]),
+      at,
+      dur,
+    )
+    const airFilter = context.createBiquadFilter()
+    airFilter.type = 'highpass'
+    airFilter.frequency.value = cargo ? 720 : 1150
+    const airGain = context.createGain()
+    airGain.gain.value = (cargo ? 0.014 : 0.026) * openness
+    const passMix = context.createGain()
+    const peak = (cargo ? rand(0.048, 0.062) : rand(0.06, 0.082)) * openness
+    passMix.gain.setValueCurveAtTime(
+      new Float32Array([0.0001, peak * 0.12, peak * 0.55, peak, peak * 0.62, peak * 0.16, 0.0001]),
+      at,
+      dur,
+    )
+    const cabinFilter = context.createBiquadFilter()
+    cabinFilter.type = 'lowpass'
+    const closedCutoff = cargo ? 980 : 1350
+    const openCutoff = cargo ? 3600 : 6200
+    const cutoff = lerp(closedCutoff, openCutoff, windowOpenVal)
+    cabinFilter.frequency.setValueCurveAtTime(new Float32Array([cutoff * 0.62, cutoff, cutoff * 0.9, cutoff * 0.52]), at, dur)
+    cabinFilter.Q.value = 0.55
     const panner = context.createStereoPanner()
-    panner.pan.setValueAtTime(-0.85, at)
-    panner.pan.linearRampToValueAtTime(0.85, at + dur)
-    src.connect(filter)
-    filter.connect(g)
-    g.connect(panner)
+    panner.pan.setValueCurveAtTime(new Float32Array([-0.98, -0.9, -0.62, 0, 0.62, 0.9, 0.98]), at, dur)
+    src.connect(bodyFilter)
+    bodyFilter.connect(passMix)
+    src.connect(airFilter)
+    airFilter.connect(airGain)
+    airGain.connect(passMix)
+    passMix.connect(cabinFilter)
+    cabinFilter.connect(panner)
     panner.connect(ambienceBus)
+
+    // A short, darker reflection from the wood and glass makes the sound feel
+    // located inside the compartment instead of pasted onto the headphones.
+    const reflectionDelay = context.createDelay(0.2)
+    reflectionDelay.delayTime.value = cargo ? 0.075 : 0.052
+    const reflectionFilter = context.createBiquadFilter()
+    reflectionFilter.type = 'lowpass'
+    reflectionFilter.frequency.value = cargo ? 650 : 920
+    const reflectionGain = context.createGain()
+    reflectionGain.gain.value = 0.11 + (1 - windowOpenVal) * 0.09
+    panner.connect(reflectionDelay)
+    reflectionDelay.connect(reflectionFilter)
+    reflectionFilter.connect(reflectionGain)
+    reflectionGain.connect(ambienceBus)
     src.start(at)
     src.stop(at + dur + 0.1)
     if (cargo) {
-      // wagon bogies thumping past one after another
-      const wagons = 4 + Math.floor(rand(0, 3))
+      // Individual wagon joints travel through the stereo field after the loco.
+      const wagons = 7
       for (let i = 0; i < wagons; i += 1) {
-        tone(at + dur * 0.18 + i * dur * 0.11, 46 + rand(0, 8), 40, 0.3, 0.02, 0.05)
+        const progress = 0.2 + i * 0.085
+        const pan = lerp(-0.78, 0.78, progress)
+        const wagonAt = at + dur * progress
+        tone(wagonAt, 54 + rand(0, 9), 38, 0.34, 0.018 * openness, 0.025, 'sine', pan)
+        tone(wagonAt + 0.08, 82, 51, 0.16, 0.009 * openness, 0.012, 'triangle', pan)
       }
     } else {
-      // low body thump as it goes by
-      tone(at + dur * 0.25, 52, 44, dur * 0.55, 0.035, dur * 0.2)
+      // Pressure wave and turbine note bend downward at the closest point.
+      tone(at + dur * 0.19, 92, 54, dur * 0.65, 0.028 * openness, dur * 0.2, 'sine', 0)
+      tone(at + dur * 0.28, 230, 154, dur * 0.46, 0.007 * openness, 0.08, 'triangle', 0)
     }
     engine.onPassingTrain?.(dur, cargo ? 'cargo' : 'passenger')
   }, 2000)

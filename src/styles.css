@@ -144,7 +144,7 @@ button { font: inherit; }
   border-bottom: 2px solid #2d211f;
   will-change: height;
   transition: height 0.05s linear;
-  animation: curtain-sway 5.4s ease-in-out infinite alternate;
+  animation: curtain-sway var(--curtain-period, 5.4s) ease-in-out infinite alternate;
   pointer-events: auto; /* Enable dragging on the curtain fabric itself */
 }
 .curtain-fabric::after {
@@ -1423,8 +1423,16 @@ button { font: inherit; }
 
 /* Curtain fabric swaying with the motion of the train */
 @keyframes curtain-sway {
-  from { transform: skewX(calc(var(--sway, 0) * -0.5deg)); }
-  to { transform: skewX(calc(var(--sway, 0) * 0.5deg)); }
+  from { transform: skewX(calc(var(--curtain-angle, .5deg) * -1)); }
+  to { transform: skewX(var(--curtain-angle, .5deg)); }
+}
+
+.station--train-passing .curtain-fabric { animation-duration: .72s; }
+.station--train-passing-cargo .curtain-fabric { animation-duration: .94s; }
+.station--train-passing .window-handle { animation: passing-handle-rattle .14s linear infinite; }
+@keyframes passing-handle-rattle {
+  25% { transform: translateX(calc(-50% - .7px)) rotate(-.2deg); }
+  75% { transform: translateX(calc(-50% + .7px)) rotate(.2deg); }
 }
 
 /* Time-of-day moods for the moving foreground */
@@ -1450,39 +1458,41 @@ button { font: inherit; }
    Passing train on the far track (synced with the audio event)
    ========================================================================== */
 
-.passing-train {
+.passing-train-viewport {
   position: absolute;
-  top: 22.5%; /* band roughly through the carriage window */
-  left: 0;
-  transform: translateX(-105%); /* parked off-screen; also the reduced-motion fallback */
-  animation: passing-sweep linear forwards;
+  left: 33.19%;
+  top: 14.45%;
+  width: 36.36%;
+  height: 42.19%;
+  z-index: 0;
+  overflow: hidden;
+  container-type: inline-size;
   pointer-events: none;
 }
-@keyframes passing-sweep {
-  from { transform: translateX(-105%); }
-  to { transform: translateX(100vw); }
+.passing-train {
+  position: absolute;
+  left: 0;
+  bottom: -8%;
+  transform: translate3d(-100%, 0, 0); /* parked beyond the left edge */
+  animation: passing-sweep linear forwards;
+  pointer-events: none;
+  will-change: transform;
 }
-.passing-train__body, .passing-train__lights { position: absolute; inset: 0; }
+@keyframes passing-sweep {
+  from { transform: translate3d(-100%, 0, 0); }
+  to { transform: translate3d(calc(100% + 100cqw), 0, 0); }
+}
 
-/* Passenger train: Frecciarossa-style SVG consist (src/PassingTrain.tsx) */
-.passing-train--passenger { height: 19%; filter: blur(1px); }
+/* Both trains are anchored to the sill; the frame hides wheels and lower body. */
+.passing-train--passenger { height: 57%; }
 .passing-train--passenger svg { display: block; height: 100%; width: auto; }
 
-/* Freight train: taller, darker, individual wagons with gaps and marker lights */
-.passing-train--cargo { width: 175vw; height: 18%; filter: blur(1.5px); }
-.passing-train--cargo .passing-train__body {
-  background:
-    linear-gradient(180deg, transparent 0 8%, rgba(0,0,0,.28) 8% 12%, transparent 12% 100%),
-    repeating-linear-gradient(90deg,
-      rgba(44,37,31,.98) 0 62px, rgba(54,44,34,.98) 62px 70px,
-      rgba(34,38,42,.98) 70px 118px, rgba(40,34,30,.98) 118px 126px,
-      rgba(9,11,14,1) 126px 140px);
-}
-.passing-train--cargo .passing-train__lights {
-  background: repeating-linear-gradient(90deg, transparent 0 62px, rgba(255,122,56,.85) 62px 66px, transparent 66px 140px);
-  mix-blend-mode: screen;
-  filter: blur(3px);
-}
+/* Freight train: locomotive, mixed container/tanker wagons and night markers. */
+.passing-train--cargo { height: 61%; bottom: -9%; }
+.passing-train--cargo svg { display: block; height: 100%; width: auto; }
+.passing-train__lit-windows,
+.passing-train__headlights,
+.passing-train__tail-light { mix-blend-mode: screen; }
 
 /* ==========================================================================
    Night/tunnel interior reflection on the window glass
@@ -1499,4 +1509,122 @@ button { font: inherit; }
     linear-gradient(180deg, rgba(255,186,116,.16), transparent 36%),
     linear-gradient(115deg, transparent 40%, rgba(255,222,176,.09) 50%, transparent 62%),
     radial-gradient(44% 30% at 20% 92%, rgba(255,168,104,.14), transparent 72%);
+}
+
+.window-surface {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: .1;
+  mix-blend-mode: screen;
+  background:
+    linear-gradient(112deg, transparent 15%, rgba(255,255,255,.16) 27%, transparent 38%),
+    radial-gradient(ellipse 38% 18% at 72% 22%, rgba(255,230,196,.12), transparent 72%),
+    repeating-linear-gradient(96deg, transparent 0 74px, rgba(255,255,255,.018) 75px 76px, transparent 77px 148px);
+  filter: blur(.45px);
+  transition: opacity .35s ease;
+  will-change: opacity, background-position;
+}
+
+/* Moving shadows from poles, bridges and trees cross the actual interior. */
+.trackside-shadows {
+  position: absolute;
+  inset: -8% -14%;
+  z-index: 0;
+  opacity: 0;
+  pointer-events: none;
+  mix-blend-mode: multiply;
+  filter: blur(7px);
+  background:
+    repeating-linear-gradient(101deg, transparent 0 168px, rgba(8,12,13,.76) 178px 198px, transparent 210px 380px),
+    repeating-linear-gradient(96deg, transparent 0 510px, rgba(5,8,9,.62) 522px 574px, transparent 590px 760px);
+  background-size: 380px 100%, 760px 100%;
+  background-repeat: repeat-x;
+  will-change: opacity, background-position;
+}
+
+/* Continuous cabin grading: cooler shadows at night, warmer pools at dusk. */
+.cabin-grade {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: calc(.12 + var(--night-level, 0) * .28);
+  mix-blend-mode: soft-light;
+  background:
+    radial-gradient(ellipse 55% 35% at 50% 8%, rgba(255,190,112,calc(.08 + var(--night-level, 0) * .3)), transparent 72%),
+    linear-gradient(180deg, rgba(28,46,70,calc(var(--night-level, 0) * .38)), transparent 48%),
+    linear-gradient(105deg, rgba(255,164,86,calc(var(--warm-level, 0) * .24)), transparent 52%);
+  transition: opacity 4s ease;
+}
+
+/* A passing consist briefly occludes daylight, then throws moving window/far
+   light across the glass, table and opposite wall. */
+.passing-cabin-effects {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  overflow: hidden;
+  pointer-events: none;
+  animation: passing-cabin-envelope linear forwards;
+}
+.passing-cabin-effects i { position: absolute; display: block; pointer-events: none; }
+.passing-cabin-effects__shadow {
+  inset: -12% -35%;
+  opacity: 0;
+  mix-blend-mode: multiply;
+  filter: blur(18px);
+  background: linear-gradient(90deg, transparent 0 28%, rgba(5,8,10,.5) 42% 61%, transparent 75%);
+  animation: passing-cabin-shadow-sweep linear forwards;
+  animation-duration: inherit;
+}
+.passing-cabin-effects__light {
+  left: 7%;
+  top: 4%;
+  width: 86%;
+  height: 92%;
+  opacity: 0;
+  mix-blend-mode: screen;
+  filter: blur(14px);
+  background: repeating-linear-gradient(91deg, transparent 0 88px, rgba(255,215,154,calc(var(--passing-light, .2) * .5)) 98px 116px, transparent 128px 230px);
+  animation: passing-cabin-light-sweep linear forwards;
+  animation-duration: inherit;
+}
+.passing-cabin-effects__glass {
+  left: 28%;
+  top: 13%;
+  width: 45%;
+  height: 48%;
+  opacity: 0;
+  mix-blend-mode: screen;
+  filter: blur(8px);
+  background: linear-gradient(104deg, transparent 10%, rgba(255,236,198,var(--passing-light, .2)) 46%, transparent 78%);
+  animation: passing-glass-flash linear forwards;
+  animation-duration: inherit;
+}
+.passing-cabin-effects--cargo .passing-cabin-effects__light {
+  background: repeating-linear-gradient(90deg, transparent 0 170px, rgba(255,190,105,calc(var(--passing-light, .2) * .35)) 184px 192px, transparent 204px 350px);
+}
+@keyframes passing-cabin-envelope {
+  0%, 100% { opacity: 0; }
+  8%, 92% { opacity: 1; }
+}
+@keyframes passing-cabin-shadow-sweep {
+  0% { transform: translate3d(-38%,0,0); opacity: 0; }
+  13% { opacity: .08; }
+  46% { opacity: .28; }
+  87% { opacity: .07; }
+  100% { transform: translate3d(38%,0,0); opacity: 0; }
+}
+@keyframes passing-cabin-light-sweep {
+  0% { transform: translate3d(-34%,0,0); opacity: 0; }
+  16% { opacity: .05; }
+  48% { opacity: .24; }
+  84% { opacity: .06; }
+  100% { transform: translate3d(34%,0,0); opacity: 0; }
+}
+@keyframes passing-glass-flash {
+  0%, 15%, 100% { transform: translateX(-48%) skewX(-8deg); opacity: 0; }
+  40%, 62% { opacity: .34; }
+  85% { transform: translateX(48%) skewX(-8deg); opacity: 0; }
 }
