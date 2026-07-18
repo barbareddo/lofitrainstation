@@ -41,7 +41,18 @@ button { font: inherit; }
 .night-wash, .golden-wash { position: absolute; inset: 0; pointer-events: none; transition: opacity 60s linear; }
 .night-wash { background: linear-gradient(180deg, rgba(3,15,35,.82), rgba(6,19,32,.54) 58%, rgba(12,13,19,.72)); mix-blend-mode: multiply; }
 .golden-wash { background: linear-gradient(115deg, rgba(255,159,66,.74), transparent 46%, rgba(160,85,122,.32)); mix-blend-mode: soft-light; }
-.speed-lines { position: absolute; inset: 54% 0 0; opacity: var(--speed-opacity); transition: opacity 3s ease; background: repeating-linear-gradient(172deg, transparent 0 18px, rgba(233,240,224,.38) 19px 20px, transparent 21px 47px); animation: rush .9s linear infinite; mix-blend-mode: screen; }
+.speed-lines {
+  position: absolute;
+  inset: 61% -8% -4%;
+  opacity: calc(var(--speed-opacity) * .42);
+  transition: opacity 3s ease;
+  background:
+    linear-gradient(177deg, transparent 0 28%, rgba(222,230,218,.16) 29% 29.5%, transparent 31% 57%, rgba(224,229,216,.09) 58% 58.5%, transparent 60%),
+    linear-gradient(180deg, transparent, rgba(200,210,194,.07) 82%, transparent);
+  filter: blur(2.4px);
+  animation: rush .72s linear infinite;
+  mix-blend-mode: screen;
+}
 .world--stopped .speed-lines { opacity: 0; animation-play-state: paused; }
 .carriage-wrapper {
   position: absolute;
@@ -1274,44 +1285,45 @@ button { font: inherit; }
 /* Once the entry transition is done, the rAF loop owns world transforms */
 .world--live { transition: none; }
 
-/* Foreground vegetation rushing past the window (fast, blurred, bottom band) */
+/* Foreground shrubs, ballast and sleepers. Unequal organic clusters keep this
+   from reading as a row of procedural bars when it crosses the window. */
 .near-field {
   position: absolute;
   left: -2%;
   right: -980px;
   bottom: -2%;
   height: 44%;
-  opacity: .5;
-  filter: blur(3px);
+  opacity: .44;
+  filter: blur(2.3px);
   pointer-events: none;
   will-change: transform;
-  background:
-    repeating-linear-gradient(86deg, transparent 0 34px, rgba(24, 34, 20, .7) 34px 44px, transparent 44px 96px),
-    repeating-linear-gradient(93deg, transparent 0 52px, rgba(30, 42, 24, .55) 52px 66px, transparent 66px 120px),
-    linear-gradient(180deg, transparent, rgba(22, 32, 19, .85) 78%);
-  background-size: 480px 100%, 480px 100%, 100% 100%;
-  background-repeat: repeat-x, repeat-x, no-repeat;
-  -webkit-mask-image: linear-gradient(180deg, transparent 0, #000 40%);
-  mask-image: linear-gradient(180deg, transparent 0, #000 40%);
+  background-image:
+    radial-gradient(ellipse 74px 92px at 15% 82%, rgba(18,29,17,.88), transparent 72%),
+    radial-gradient(ellipse 112px 70px at 52% 88%, rgba(25,38,21,.82), transparent 74%),
+    radial-gradient(ellipse 66px 112px at 86% 82%, rgba(20,31,18,.78), transparent 72%),
+    repeating-linear-gradient(94deg, transparent 0 48px, rgba(49,43,36,.72) 50px 63px, transparent 66px 104px),
+    linear-gradient(177deg, transparent 0 68%, rgba(157,153,137,.34) 69% 70%, rgba(38,38,34,.78) 71% 75%, transparent 77%),
+    linear-gradient(180deg, transparent 38%, rgba(31,43,25,.36) 62%, rgba(28,29,25,.86) 100%);
+  background-size: 420px 100%, 560px 100%, 470px 100%, 520px 100%, 100% 100%, 100% 100%;
+  background-position: 0 0, 130px 0, 280px 0, 0 0, 0 0, 0 0;
+  background-repeat: repeat-x, repeat-x, repeat-x, repeat-x, no-repeat, no-repeat;
+  -webkit-mask-image: linear-gradient(180deg, transparent 0, rgba(0,0,0,.3) 30%, #000 54%);
+  mask-image: linear-gradient(180deg, transparent 0, rgba(0,0,0,.3) 30%, #000 54%);
 }
 
-/* Catenary poles sweeping by — the signature of train speed */
+/* Detailed catenary: lattice mast, cantilever, insulators, droppers and sagging
+   contact wire. It remains legible for the few frames spent near the window. */
 .pole-strip {
   position: absolute;
   top: -6%;
   bottom: -4%;
   left: -2%;
   right: -1100px;
-  opacity: .5;
-  filter: blur(1.1px);
+  opacity: .58;
+  filter: blur(.65px) contrast(.96);
   pointer-events: none;
   will-change: transform;
-  background:
-    repeating-linear-gradient(90deg, transparent 0 524px, rgba(16, 14, 11, .9) 524px 531px, transparent 531px 540px),
-    repeating-linear-gradient(90deg, transparent 0 500px, rgba(16, 14, 11, .5) 500px 540px);
-  background-size: 540px 100%, 540px 30%;
-  background-position: 0 0, 0 12%;
-  background-repeat: repeat-x, repeat-x;
+  background: url('/catenary-tile.svg') 0 50% / 720px 108% repeat-x;
 }
 
 /* Sodium light strips flashing past inside the tunnel */
@@ -1324,11 +1336,13 @@ button { font: inherit; }
   opacity: 0;
   transition: opacity 1.4s ease;
   mix-blend-mode: screen;
-  filter: blur(2px);
+  filter: blur(1.5px);
   pointer-events: none;
   will-change: transform;
-  background: repeating-linear-gradient(90deg, transparent 0 416px, rgba(255, 172, 72, .9) 424px 434px, transparent 442px 460px);
-  background-size: 460px 100%;
+  background-image:
+    radial-gradient(ellipse 26px 46% at 88% 48%, rgba(255,226,174,.94) 0 8%, rgba(255,159,62,.38) 22%, transparent 70%),
+    linear-gradient(90deg, transparent 82%, rgba(255,148,48,.08) 88%, transparent 96%);
+  background-size: 460px 100%, 460px 100%;
   background-repeat: repeat-x;
 }
 .station--tunnel .tunnel-strips { opacity: .85; }
@@ -1341,8 +1355,10 @@ button { font: inherit; }
   opacity: 0;
   pointer-events: none;
   mix-blend-mode: soft-light;
-  background: repeating-linear-gradient(97deg, transparent 0 120px, rgba(255, 220, 160, .5) 120px 190px, transparent 190px 340px, rgba(255, 208, 140, .32) 340px 380px, transparent 380px 560px);
-  background-size: 560px 100%;
+  background-image:
+    radial-gradient(ellipse 92px 82% at 42% 48%, rgba(255,220,165,.42), rgba(255,208,140,.13) 46%, transparent 74%),
+    radial-gradient(ellipse 48px 68% at 76% 62%, rgba(255,232,192,.28), transparent 72%);
+  background-size: 340px 100%, 560px 100%;
   background-repeat: repeat-x;
 }
 
@@ -1405,9 +1421,9 @@ button { font: inherit; }
   mix-blend-mode: screen;
   transition: opacity 3s ease;
   background:
-    radial-gradient(ellipse 26% 16% at 12% 3%, rgba(255, 196, 118, .5), transparent 70%),
-    radial-gradient(ellipse 26% 16% at 88% 3%, rgba(255, 196, 118, .5), transparent 70%),
-    radial-gradient(ellipse 60% 30% at 50% 0%, rgba(255, 180, 96, .22), transparent 75%);
+    radial-gradient(ellipse 21% 27% at 13% 16%, rgba(255,205,139,.46), rgba(255,171,82,.13) 42%, transparent 72%),
+    radial-gradient(ellipse 21% 27% at 87% 16%, rgba(255,205,139,.46), rgba(255,171,82,.13) 42%, transparent 72%),
+    radial-gradient(ellipse 48% 22% at 50% -2%, rgba(255,188,103,.09), transparent 76%);
 }
 
 /* Pulsing sodium ambience inside the tunnel */
@@ -1475,21 +1491,47 @@ button { font: inherit; }
   bottom: -8%;
   transform: translate3d(-100%, 0, 0); /* parked beyond the left edge */
   animation: passing-sweep linear forwards;
+  opacity: 0;
   pointer-events: none;
-  will-change: transform;
+  will-change: transform, opacity;
 }
 @keyframes passing-sweep {
-  from { transform: translate3d(-100%, 0, 0); }
-  to { transform: translate3d(calc(100% + 100cqw), 0, 0); }
+  0% { transform: translate3d(-100%, .4px, 0); opacity: 0; }
+  3% { opacity: .82; }
+  12% { opacity: .96; }
+  50% { transform: translate3d(50cqw, -.35px, 0); opacity: .98; }
+  88% { opacity: .96; }
+  97% { opacity: .8; }
+  100% { transform: translate3d(calc(100% + 100cqw), .3px, 0); opacity: 0; }
+}
+
+/* Photographic cutouts replace the old flat SVG drawing. Their color and
+   sharpness are pulled toward the landscape so they sit on the far track. */
+.passing-train img {
+  display: block;
+  width: auto;
+  height: 100%;
+  max-width: none;
+  user-select: none;
+  transform: translateZ(0);
+  filter:
+    brightness(calc(.72 + var(--passing-daylight, 1) * .26))
+    saturate(.76)
+    contrast(.94)
+    blur(.38px);
+  animation: passing-train-body-shudder .11s steps(2, end) infinite;
+  will-change: transform;
+}
+@keyframes passing-train-body-shudder {
+  0% { transform: translate3d(0, -.22px, 0); }
+  50% { transform: translate3d(0, .22px, 0); }
 }
 
 /* Both trains are anchored to the sill; the frame hides wheels and lower body. */
-.passing-train--passenger { height: 57%; }
-.passing-train--passenger svg { display: block; height: 100%; width: auto; }
+.passing-train--passenger { height: 46%; bottom: -4%; }
 
 /* Freight train: locomotive, mixed container/tanker wagons and night markers. */
-.passing-train--cargo { height: 61%; bottom: -9%; }
-.passing-train--cargo svg { display: block; height: 100%; width: auto; }
+.passing-train--cargo { height: 70%; bottom: -7%; }
 .passing-train__lit-windows,
 .passing-train__headlights,
 .passing-train__tail-light { mix-blend-mode: screen; }
@@ -1518,9 +1560,11 @@ button { font: inherit; }
   opacity: .1;
   mix-blend-mode: screen;
   background:
-    linear-gradient(112deg, transparent 15%, rgba(255,255,255,.16) 27%, transparent 38%),
-    radial-gradient(ellipse 38% 18% at 72% 22%, rgba(255,230,196,.12), transparent 72%),
-    repeating-linear-gradient(96deg, transparent 0 74px, rgba(255,255,255,.018) 75px 76px, transparent 77px 148px);
+    linear-gradient(112deg, transparent 15%, rgba(255,255,255,.13) 27%, transparent 38%),
+    radial-gradient(ellipse 38% 18% at 72% 22%, rgba(255,230,196,.1), transparent 72%),
+    radial-gradient(ellipse 16% 7% at 24% 66%, rgba(225,232,226,.055), transparent 78%),
+    radial-gradient(ellipse 11% 18% at 83% 73%, rgba(228,235,230,.04), transparent 76%),
+    repeating-linear-gradient(96deg, transparent 0 96px, rgba(255,255,255,.014) 97px 98px, transparent 99px 188px);
   filter: blur(.45px);
   transition: opacity .35s ease;
   will-change: opacity, background-position;
@@ -1534,11 +1578,12 @@ button { font: inherit; }
   opacity: 0;
   pointer-events: none;
   mix-blend-mode: multiply;
-  filter: blur(7px);
-  background:
-    repeating-linear-gradient(101deg, transparent 0 168px, rgba(8,12,13,.76) 178px 198px, transparent 210px 380px),
-    repeating-linear-gradient(96deg, transparent 0 510px, rgba(5,8,9,.62) 522px 574px, transparent 590px 760px);
-  background-size: 380px 100%, 760px 100%;
+  filter: blur(9px);
+  background-image:
+    radial-gradient(ellipse 96px 86% at 36% 48%, rgba(6,10,9,.7), rgba(8,12,10,.26) 48%, transparent 76%),
+    radial-gradient(ellipse 52px 72% at 76% 55%, rgba(7,10,9,.52), transparent 75%),
+    linear-gradient(100deg, transparent 0 71%, rgba(5,8,9,.52) 73% 75%, transparent 77%);
+  background-size: 380px 100%, 620px 100%, 760px 100%;
   background-repeat: repeat-x;
   will-change: opacity, background-position;
 }

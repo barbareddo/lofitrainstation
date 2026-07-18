@@ -71,8 +71,14 @@ const WALLA: Record<Locale, {
 export function createAudioEngine(onSourceChange?: (source: AudioSource) => void): AudioEngine {
   const context = new AudioContext()
   const master = context.createGain()
-  master.gain.value = 0.68
-  master.connect(context.destination)
+  master.gain.value = 0.72
+  const limiter = context.createDynamicsCompressor()
+  limiter.threshold.value = -11
+  limiter.knee.value = 12
+  limiter.ratio.value = 4
+  limiter.attack.value = 0.012
+  limiter.release.value = 0.24
+  master.connect(limiter).connect(context.destination)
 
   const musicBus = context.createGain()
   const trainBus = context.createGain()
@@ -88,8 +94,28 @@ export function createAudioEngine(onSourceChange?: (source: AudioSource) => void
   const ambienceBus = context.createGain()
   rollingBus.gain.value = 0.55
   ambienceBus.gain.value = 0.55
-  rollingBus.connect(trainBus)
-  ambienceBus.connect(trainBus)
+
+  // The listener is inside a furnished wooden carriage, not beside the rail.
+  // This shared acoustic path removes brittle highs when the window is closed
+  // and adds the small body resonance of the compartment itself.
+  const cabinAcousticFilter = context.createBiquadFilter()
+  cabinAcousticFilter.type = 'lowpass'
+  cabinAcousticFilter.frequency.value = 3900
+  cabinAcousticFilter.Q.value = 0.42
+  const cabinBody = context.createBiquadFilter()
+  cabinBody.type = 'peaking'
+  cabinBody.frequency.value = 175
+  cabinBody.Q.value = 0.8
+  cabinBody.gain.value = 1.6
+  const cabinCompressor = context.createDynamicsCompressor()
+  cabinCompressor.threshold.value = -20
+  cabinCompressor.knee.value = 18
+  cabinCompressor.ratio.value = 2.4
+  cabinCompressor.attack.value = 0.018
+  cabinCompressor.release.value = 0.32
+  rollingBus.connect(cabinAcousticFilter)
+  ambienceBus.connect(cabinAcousticFilter)
+  cabinAcousticFilter.connect(cabinBody).connect(cabinCompressor).connect(trainBus)
 
   // Generated impulse response: a small, warm wooden space. The wet amount is
   // automated — dry in the open country, roomy at platforms, splashy and hard
@@ -97,18 +123,22 @@ export function createAudioEngine(onSourceChange?: (source: AudioSource) => void
   const verbSend = context.createGain()
   verbSend.gain.value = 0.08
   const convolver = context.createConvolver()
-  const irLength = Math.floor(context.sampleRate * 1.5)
+  const irLength = Math.floor(context.sampleRate * 0.92)
   const impulse = context.createBuffer(2, irLength, context.sampleRate)
   for (let channel = 0; channel < 2; channel += 1) {
     const irData = impulse.getChannelData(channel)
     for (let i = 0; i < irLength; i += 1) {
-      irData[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / irLength, 2.8)
+      const early = i < context.sampleRate * 0.09 ? 1.35 : 1
+      irData[i] = (Math.random() * 2 - 1) * early * Math.pow(1 - i / irLength, 4.1)
     }
   }
   convolver.buffer = impulse
   trainBus.connect(verbSend)
   verbSend.connect(convolver)
-  convolver.connect(master)
+  const verbDamping = context.createBiquadFilter()
+  verbDamping.type = 'lowpass'
+  verbDamping.frequency.value = 3100
+  convolver.connect(verbDamping).connect(master)
 
   // Lofi Cafe's official 24/7 Chilling stream, mixed through Web Audio so the
   // live station and the procedural train share one master control.
@@ -189,26 +219,30 @@ export function createAudioEngine(onSourceChange?: (source: AudioSource) => void
   hum.type = 'sine'
   hum.frequency.value = 42
   const humGain = context.createGain()
-  humGain.gain.value = 0.03
+  humGain.gain.value = 0.012
   hum.connect(humGain).connect(rollingBus)
   hum.start()
   const hum2 = context.createOscillator()
   hum2.type = 'sine'
   hum2.frequency.value = 63.4
   const hum2Gain = context.createGain()
-  hum2Gain.gain.value = 0.012
+  hum2Gain.gain.value = 0.004
   hum2.connect(hum2Gain).connect(rollingBus)
   hum2.start()
 
   // ---- Continuous environment bed (ambienceBus) --------------------------------
-  // Interior HVAC hiss — always barely there inside the carriage
+  // Broad, quiet HVAC airflow rather than a sharp white-noise hiss.
   const hissFilter = context.createBiquadFilter()
   hissFilter.type = 'highpass'
-  hissFilter.frequency.value = 5200
+  hissFilter.frequency.value = 380
+  const hissDamping = context.createBiquadFilter()
+  hissDamping.type = 'lowpass'
+  hissDamping.frequency.value = 5200
+  hissDamping.Q.value = 0.35
   const hissGain = context.createGain()
-  hissGain.gain.value = 0.003
+  hissGain.gain.value = 0.0016
   noise.connect(hissFilter)
-  hissFilter.connect(hissGain).connect(ambienceBus)
+  hissFilter.connect(hissDamping).connect(hissGain).connect(ambienceBus)
 
   // Rushing air at the window gap
   const windFilter = context.createBiquadFilter()
@@ -217,14 +251,16 @@ export function createAudioEngine(onSourceChange?: (source: AudioSource) => void
   windFilter.Q.value = 1.1
   const windGain = context.createGain()
   windGain.gain.value = 0
+  const windPan = context.createStereoPanner()
+  windPan.pan.value = 0.58
   noise.connect(windFilter)
-  windFilter.connect(windGain).connect(ambienceBus)
+  windFilter.connect(windGain).connect(windPan).connect(ambienceBus)
 
   // Tunnel pressure whistle (narrow, high — that "in a tube" ringing)
   const tunnelWhistleFilter = context.createBiquadFilter()
   tunnelWhistleFilter.type = 'bandpass'
   tunnelWhistleFilter.frequency.value = 1150
-  tunnelWhistleFilter.Q.value = 7
+  tunnelWhistleFilter.Q.value = 3.8
   const tunnelWhistleGain = context.createGain()
   tunnelWhistleGain.gain.value = 0
   noise.connect(tunnelWhistleFilter)
@@ -232,8 +268,9 @@ export function createAudioEngine(onSourceChange?: (source: AudioSource) => void
 
   // Muffled platform crowd when standing at a station
   const crowdFilter = context.createBiquadFilter()
-  crowdFilter.type = 'lowpass'
-  crowdFilter.frequency.value = 420
+  crowdFilter.type = 'bandpass'
+  crowdFilter.frequency.value = 620
+  crowdFilter.Q.value = 0.55
   const crowdGain = context.createGain()
   crowdGain.gain.value = 0
   crowdNoise.connect(crowdFilter)
@@ -281,17 +318,22 @@ export function createAudioEngine(onSourceChange?: (source: AudioSource) => void
 
   const applyAmbience = () => {
     const s = speed
-    set(subGain.gain, Math.pow(s, 1.8) * 0.064 * (inTunnel ? 1.5 : 1))
-    set(humGain.gain, 0.02 + s * 0.05)
-    set(hum2Gain.gain, 0.008 + s * 0.02)
-    set(hissGain.gain, 0.0026 + s * 0.0012)
+    const open = windowOpenVal
+    set(cabinAcousticFilter.frequency, lerp(inTunnel ? 3000 : 3900, inTunnel ? 7600 : 11800, open), 0.22)
+    set(cabinBody.gain, lerp(1.8, 0.5, open), 0.3)
+    set(subGain.gain, Math.pow(s, 1.8) * 0.038 * (inTunnel ? 1.35 : 1))
+    set(humGain.gain, 0.005 + s * 0.014)
+    set(hum2Gain.gain, 0.002 + s * 0.005)
+    set(hissGain.gain, 0.0013 + s * 0.0007)
     if (windowOpenVal <= 0.05) set(windGain.gain, 0)
-    else set(windGain.gain, windowOpenVal * (0.004 + s * 0.048))
-    set(windFilter.frequency, 260 + windowOpenVal * 300 + s * 170)
-    set(tunnelWhistleGain.gain, inTunnel ? s * 0.016 * (1 + windowOpenVal) : 0)
-    set(crowdGain.gain, atPlatform ? 0.02 : 0)
-    set(verbSend.gain, inTunnel ? 0.3 : atPlatform ? 0.16 : 0.07, 0.6)
-    set(radioGain.gain, 1 - windowOpenVal * 0.16)
+    else set(windGain.gain, windowOpenVal * (0.0025 + s * 0.034))
+    set(windFilter.frequency, 330 + windowOpenVal * 410 + s * 260)
+    set(windFilter.Q, lerp(0.62, 0.9, s), 0.25)
+    set(tunnelWhistleGain.gain, inTunnel ? s * 0.008 * (1 + windowOpenVal * 0.8) : 0)
+    set(crowdGain.gain, atPlatform ? 0.009 + open * 0.008 : 0)
+    set(verbSend.gain, inTunnel ? 0.19 : atPlatform ? 0.11 : 0.045, 0.6)
+    set(verbDamping.frequency, inTunnel ? 2200 : atPlatform ? 3400 : 2800, 0.6)
+    set(radioGain.gain, 1 - windowOpenVal * 0.11)
   }
 
   // ---- One-shot helpers -----------------------------------------------------
@@ -492,20 +534,21 @@ export function createAudioEngine(onSourceChange?: (source: AudioSource) => void
   // Two axles per bogie up front, then the carriages behind answering the same
   // joints a beat later, duller. Each click also nudges the rumble louder for
   // a split second, like the car body taking the shock.
-  // Click loudness trim: ~25% softer than the first v2 mix so the rolling bed
-  // sits under the music instead of competing with it.
-  const CLICK_LEVEL = 0.75
+  // Most of a real rail joint is a short broadband impact conducted through
+  // the bogie and floor. A very quiet low partial supplies weight without the
+  // recognisable "synth drum" pitch of the previous version.
+  const CLICK_LEVEL = 0.62
   const scheduleClick = (at: number, velocity: number, dull = false) => {
     amBoost = Math.min(0.3, amBoost + velocity * (dull ? 0.06 : 0.14))
     if (dull) {
-      tone(at, 70 + rand(0, 14), 50, 0.09, velocity * 0.04 * CLICK_LEVEL, 0.004, 'sine', 0, rollingBus)
-      burst(at, 'bandpass', rand(300, 600), 1.1, velocity * 0.026 * CLICK_LEVEL, 0.003, 0.05, rollingBus)
+      tone(at, 66 + rand(0, 9), 48, 0.075, velocity * 0.012 * CLICK_LEVEL, 0.003, 'sine', 0, rollingBus)
+      burst(at, 'bandpass', rand(240, 480), 0.72, velocity * 0.022 * CLICK_LEVEL, 0.002, 0.065, rollingBus)
       return
     }
-    tone(at, 86 + rand(0, 26), 60, 0.1, velocity * 0.055 * CLICK_LEVEL, 0.004, 'sine', 0, rollingBus)
-    burst(at, 'bandpass', rand(620, 1350) * (1 + windowOpenVal * 0.3), 1.25, velocity * 0.04 * CLICK_LEVEL, 0.003, 0.055, rollingBus)
+    tone(at, 78 + rand(0, 18), 54, 0.085, velocity * 0.017 * CLICK_LEVEL, 0.003, 'sine', 0, rollingBus)
+    burst(at, 'bandpass', rand(520, 1120) * (1 + windowOpenVal * 0.24), 0.9, velocity * 0.032 * CLICK_LEVEL, 0.002, 0.062, rollingBus)
     // high transient "tick" for definition
-    burst(at, 'highpass', 2400, 0.8, velocity * 0.011 * CLICK_LEVEL, 0.001, 0.028, rollingBus)
+    burst(at, 'highpass', 2100, 0.62, velocity * 0.006 * CLICK_LEVEL, 0.001, 0.024, rollingBus)
     // on a bridge the joint rings back once, hollow
     if (inBridge()) burst(at + 0.085, 'bandpass', rand(380, 620), 1.2, velocity * 0.018 * CLICK_LEVEL, 0.003, 0.06, rollingBus)
   }
@@ -524,7 +567,7 @@ export function createAudioEngine(onSourceChange?: (source: AudioSource) => void
         scheduleClick(at + rand(0.26, 0.34), velocity * 0.32, true)
         engine.onRailClick?.(Math.min(1, velocity))
       }
-      const interval = lerp(1.05, 0.34, Math.pow(speed, 0.85)) * rand(0.94, 1.06)
+      const interval = lerp(1.08, 0.38, Math.pow(speed, 0.85)) * rand(0.91, 1.09)
       nextClickAt = Math.max(nextClickAt, context.currentTime) + interval
     }
   }, 90)
@@ -535,14 +578,18 @@ export function createAudioEngine(onSourceChange?: (source: AudioSource) => void
     const s = speed
     const bridge = inBridge()
     amBoost *= 0.55
-    const rumbleBase = (0.018 + Math.pow(s, 1.55) * 0.21) * (inTunnel ? 1.6 : 1) * (1 + windowOpenVal * 0.5)
-    set(rumbleGain.gain, rumbleBase * (bridge ? 1.35 : 1) * (1 + amBoost), 0.12)
-    set(rumbleFilter.frequency, lerp(100, inTunnel ? 175 : 240, s) + (bridge ? 130 : 0), 0.15)
-    set(roarGain.gain, Math.pow(s, 2.2) * 0.05 * (inTunnel ? 1.4 : 1) * (bridge ? 1.5 : 1), 0.2)
-    set(roarFilter.frequency, 320 + s * 260, 0.25)
     const t = context.currentTime
+    const slowLoad = 0.94 + Math.sin(t * 0.73) * 0.035 + Math.sin(t * 1.91 + 0.8) * 0.018
+    const rumbleBase = (0.011 + Math.pow(s, 1.55) * 0.115) * (inTunnel ? 1.34 : 1) * (1 + windowOpenVal * 0.34)
+    set(rumbleGain.gain, rumbleBase * slowLoad * (bridge ? 1.28 : 1) * (1 + amBoost), 0.12)
+    set(rumbleFilter.frequency, lerp(92, inTunnel ? 164 : 215, s) + (bridge ? 92 : 0), 0.15)
+    set(roarGain.gain, Math.pow(s, 2.15) * 0.031 * (inTunnel ? 1.28 : 1) * (bridge ? 1.34 : 1), 0.2)
+    set(roarFilter.frequency, 285 + s * 235 + Math.sin(t * 0.31) * 18, 0.25)
+    set(hum.frequency, 32 + s * 27 + Math.sin(t * 0.19) * 0.7, 0.22)
+    set(hum2.frequency, 51 + s * 39 + Math.sin(t * 0.23 + 1.4) * 1.1, 0.22)
+    set(hissGain.gain, (0.00125 + s * 0.00065) * (0.94 + Math.sin(t * 0.37) * 0.06), 0.45)
     const singLevel = s > 0.5 && !inTunnel
-      ? (s - 0.5) * 0.022 * Math.max(0, 0.55 + 0.45 * Math.sin(t * 0.21) + 0.15 * Math.sin(t * 0.53))
+      ? (s - 0.5) * 0.012 * Math.max(0, 0.48 + 0.38 * Math.sin(t * 0.21) + 0.14 * Math.sin(t * 0.53))
       : 0
     set(singGain.gain, singLevel, 0.4)
     set(singFilter.frequency, 900 + Math.sin(t * 0.09) * 120, 0.5)
@@ -572,10 +619,10 @@ export function createAudioEngine(onSourceChange?: (source: AudioSource) => void
     if (windowOpenVal > 0.05) {
       const t = context.currentTime
       const gust = 0.72 + 0.28 * Math.sin(t * 1.7) + 0.14 * Math.sin(t * 3.9 + 1.3)
-      set(windGain.gain, windowOpenVal * (0.004 + speed * 0.05) * Math.max(0.35, gust), 0.12)
-      set(windFilter.frequency, 240 + windowOpenVal * 300 + speed * 190 + Math.sin(t * 2.3) * 60, 0.12)
+      set(windGain.gain, windowOpenVal * (0.0025 + speed * 0.034) * Math.max(0.35, gust), 0.12)
+      set(windFilter.frequency, 330 + windowOpenVal * 410 + speed * 260 + Math.sin(t * 2.3) * 54, 0.12)
       if (windowOpenVal > 0.5 && speed > 0.6 && Math.random() < 0.05) {
-        tone(t, 58, 44, 0.12, 0.02, 0.02)
+        burst(t, 'lowpass', 140, 0.55, 0.012, 0.015, 0.14, ambienceBus, 72)
       }
     }
   }, 160)
@@ -585,7 +632,7 @@ export function createAudioEngine(onSourceChange?: (source: AudioSource) => void
     if (stopped || speed < 0.45 || Math.random() > 1 / 26) return
     const at = context.currentTime + 0.05
     const dur = rand(1.0, 1.8)
-    const peak = rand(2000, 2500)
+    const peak = rand(1850, 2280)
     const osc = context.createOscillator()
     osc.type = 'sine'
     osc.frequency.setValueAtTime(1750, at)
@@ -593,13 +640,14 @@ export function createAudioEngine(onSourceChange?: (source: AudioSource) => void
     osc.frequency.exponentialRampToValueAtTime(1900, at + dur)
     const g = context.createGain()
     g.gain.setValueAtTime(0.0001, at)
-    g.gain.linearRampToValueAtTime(rand(0.004, 0.009), at + dur * 0.3)
+    g.gain.linearRampToValueAtTime(rand(0.002, 0.0045), at + dur * 0.3)
     g.gain.exponentialRampToValueAtTime(0.0001, at + dur)
     const panner = context.createStereoPanner()
     panner.pan.value = rand(-0.55, 0.55)
     osc.connect(g)
     g.connect(panner)
     panner.connect(rollingBus)
+    burst(at + 0.04, 'bandpass', rand(1450, 2050), 5.5, 0.003, dur * 0.18, dur * 0.72, rollingBus, rand(1700, 2300))
     osc.start(at)
     osc.stop(at + dur + 0.1)
   }, 1000)
@@ -681,13 +729,13 @@ export function createAudioEngine(onSourceChange?: (source: AudioSource) => void
         const progress = 0.2 + i * 0.085
         const pan = lerp(-0.78, 0.78, progress)
         const wagonAt = at + dur * progress
-        tone(wagonAt, 54 + rand(0, 9), 38, 0.34, 0.018 * openness, 0.025, 'sine', pan)
-        tone(wagonAt + 0.08, 82, 51, 0.16, 0.009 * openness, 0.012, 'triangle', pan)
+        tone(wagonAt, 52 + rand(0, 7), 38, 0.28, 0.009 * openness, 0.02, 'sine', pan)
+        burst(wagonAt + 0.05, 'bandpass', rand(150, 260), 0.7, 0.008 * openness, 0.008, 0.14, ambienceBus)
       }
     } else {
       // Pressure wave and turbine note bend downward at the closest point.
-      tone(at + dur * 0.19, 92, 54, dur * 0.65, 0.028 * openness, dur * 0.2, 'sine', 0)
-      tone(at + dur * 0.28, 230, 154, dur * 0.46, 0.007 * openness, 0.08, 'triangle', 0)
+      tone(at + dur * 0.19, 88, 51, dur * 0.65, 0.014 * openness, dur * 0.2, 'sine', 0)
+      tone(at + dur * 0.28, 220, 148, dur * 0.46, 0.0035 * openness, 0.08, 'triangle', 0)
     }
     engine.onPassingTrain?.(dur, cargo ? 'cargo' : 'passenger')
   }, 2000)
@@ -717,35 +765,55 @@ export function createAudioEngine(onSourceChange?: (source: AudioSource) => void
     playHorn(context.currentTime + rand(0.1, 0.5), rand(0.006, 0.011), rand(-0.5, 0.5))
   }, 1000)
 
+  // Quiet structure-borne movement inside the carriage: upholstery, woodwork
+  // and panel joints answer large rail inputs at different positions. These
+  // are deliberately sparse; constant creaking would sound theatrical.
+  const cabinMovementTimer = window.setInterval(() => {
+    if (stopped || speed < 0.18 || Math.random() > 1 / 38) return
+    const at = context.currentTime + rand(0.04, 0.45)
+    const pan = rand(-0.72, 0.72)
+    const panner = context.createStereoPanner()
+    panner.pan.value = pan
+    const localBus = context.createGain()
+    localBus.gain.value = 0.72
+    localBus.connect(panner).connect(ambienceBus)
+    burst(at, 'bandpass', rand(115, 220), 1.5, rand(0.003, 0.006), 0.025, rand(0.16, 0.32), localBus, rand(90, 155))
+    if (Math.random() < 0.45) {
+      burst(at + rand(0.08, 0.2), 'bandpass', rand(420, 760), 2.1, rand(0.0012, 0.0028), 0.012, rand(0.08, 0.18), localBus)
+    }
+  }, 1400)
+
   // ---- Station life: PA jingle + announcement, nearby chatter -------------------
   const paTimer = window.setInterval(() => {
-    if (stopped || !atPlatform || Math.random() > 1 / 6) return
+    if (stopped || !atPlatform || Math.random() > 1 / 10) return
     playJingle(locale)
   }, 4000)
 
   const platformVoiceTimer = window.setInterval(() => {
-    if (stopped || !atPlatform || Math.random() > 0.45) return
-    speakPhrase(context.currentTime + rand(0.1, 1.2), locale, { level: rand(0.006, 0.013), pan: rand(-0.6, 0.6), maxSyl: 6 })
+    if (stopped || !atPlatform || Math.random() > 0.18) return
+    speakPhrase(context.currentTime + rand(0.1, 1.2), locale, { level: rand(0.0025, 0.005), pan: rand(-0.7, 0.7), maxSyl: 5 })
   }, 1300)
 
   // ---- Random quiet passenger chatter inside the carriage while moving ----------
   const movingVoiceTimer = window.setInterval(() => {
-    if (stopped || speed < 0.3 || inTunnel || Math.random() > 1 / 55) return
-    speakPhrase(context.currentTime + rand(0.2, 1.5), locale, { level: rand(0.0035, 0.007), pan: rand(-0.45, 0.45), maxSyl: 4 })
+    if (stopped || speed < 0.3 || inTunnel || Math.random() > 1 / 90) return
+    speakPhrase(context.currentTime + rand(0.2, 1.5), locale, { level: rand(0.0018, 0.0038), pan: rand(-0.55, 0.55), maxSyl: 4 })
   }, 1000)
 
   // ---- Vinyl crackle on the music bus -----------------------------------------
   const vinylTimer = window.setInterval(() => {
     if (musicPaused || stopped || Math.random() > 0.42) return
-    burst(context.currentTime + 0.01, 'highpass', rand(1800, 2800), 0.7, rand(0.0012, 0.0045), 0.002, 0.02, musicBus)
+    burst(context.currentTime + 0.01, 'highpass', rand(2100, 3400), 0.6, rand(0.0007, 0.0022), 0.0015, 0.018, musicBus)
   }, 130)
 
   // ---- Procedural door opening (entry screen) ------------------------------------
   const playDoorOpenSound = () => {
     const now = context.currentTime
-    tone(now, 620, 120, 0.09, 0.045, 0.005, 'triangle')
-    burst(now + 0.05, 'bandpass', 240, 1.0, 0.032, 0.18, 0.7, ambienceBus, 560)
-    tone(now + 0.78, 95, 68, 0.14, 0.022, 0.01)
+    burst(now, 'bandpass', 760, 0.8, 0.021, 0.008, 0.11, ambienceBus, 180)
+    burst(now + 0.045, 'bandpass', 210, 0.74, 0.024, 0.15, 0.72, ambienceBus, 470)
+    burst(now + 0.18, 'highpass', 1900, 0.5, 0.006, 0.12, 0.48, ambienceBus, 900)
+    tone(now + 0.76, 88, 62, 0.13, 0.011, 0.008)
+    burst(now + 0.76, 'lowpass', 260, 0.55, 0.018, 0.006, 0.11)
   }
 
   // ---- Brake application into a station ------------------------------------------
@@ -754,11 +822,11 @@ export function createAudioEngine(onSourceChange?: (source: AudioSource) => void
     const now = context.currentTime
     if (now - lastBrakes < 6) return
     lastBrakes = now
-    burst(now, 'highpass', 2500, 0.6, 0.032, 0.15, 2.65)
-    tone(now + 0.1, 300, 172, 1.15, 0.0075, 0.15)
-    burst(now + 2.4, 'bandpass', 800, 1.1, 0.018, 0.05, 0.4)
-    tone(now + 2.65, 68, 52, 0.13, 0.05, 0.012)
-    burst(now + 2.65, 'lowpass', 300, 0.8, 0.025, 0.01, 0.09)
+    burst(now, 'highpass', 1850, 0.48, 0.021, 0.18, 2.7, ambienceBus, 3200)
+    burst(now + 0.08, 'bandpass', 940, 3.2, 0.006, 0.22, 1.35, ambienceBus, 540)
+    burst(now + 2.35, 'bandpass', 720, 0.82, 0.012, 0.04, 0.44)
+    tone(now + 2.64, 65, 48, 0.12, 0.018, 0.009)
+    burst(now + 2.64, 'lowpass', 260, 0.62, 0.02, 0.007, 0.12)
   }
 
   // ---- Leaving a station: loud whistle, conductor shout, door beeps, slam -----------
@@ -775,9 +843,10 @@ export function createAudioEngine(onSourceChange?: (source: AudioSource) => void
     for (let i = 0; i < 3; i += 1) {
       tone(now + 2.1 + i * 0.17, 988, 986, 0.075, 0.009, 0.008, 'square')
     }
-    // doors slam
-    tone(now + 2.75, 74, 58, 0.16, 0.05, 0.012)
-    burst(now + 2.75, 'lowpass', 320, 0.8, 0.02, 0.01, 0.1)
+    // Pneumatic seals and a restrained structure-borne door closure.
+    burst(now + 2.58, 'highpass', 2400, 0.5, 0.006, 0.08, 0.34, ambienceBus, 900)
+    tone(now + 2.75, 72, 54, 0.14, 0.018, 0.01)
+    burst(now + 2.75, 'lowpass', 290, 0.65, 0.024, 0.008, 0.12)
   }
 
   // ---- Generative fallback chords (when the stream is unreachable) -------------------
@@ -845,7 +914,7 @@ export function createAudioEngine(onSourceChange?: (source: AudioSource) => void
     context,
     startMusic: async () => {
       musicPaused = false
-      set(vinylGain.gain, 0.0012, 0.5)
+      set(vinylGain.gain, 0.00065, 0.5)
       try {
         radio.load()
         await radio.play()
@@ -878,6 +947,9 @@ export function createAudioEngine(onSourceChange?: (source: AudioSource) => void
       window.clearInterval(gustTimer)
       window.clearInterval(squealTimer)
       window.clearInterval(passingTimer)
+      window.clearInterval(crossingTimer)
+      window.clearInterval(hornTimer)
+      window.clearInterval(cabinMovementTimer)
       window.clearInterval(paTimer)
       window.clearInterval(platformVoiceTimer)
       window.clearInterval(movingVoiceTimer)

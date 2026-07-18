@@ -11,8 +11,6 @@ import SlidersHorizontal from 'lucide-react/dist/esm/icons/sliders-horizontal.mj
 import Square from 'lucide-react/dist/esm/icons/square.mjs'
 import Volume2 from 'lucide-react/dist/esm/icons/volume-2.mjs'
 import { createAudioEngine, type AudioSource } from './audio'
-import { PassingTrain } from './PassingTrain'
-import { CargoTrain } from './CargoTrain'
 
 const TRAVEL_MS = 4 * 60 * 60 * 1000
 const STOP_MS = 8 * 60 * 1000
@@ -550,7 +548,7 @@ function App() {
     const seed = Math.random() * 100
 
     const NEAR_TILE = 480
-    const POLE_TILE = 540
+    const POLE_TILE = 720
     const STRIP_TILE = 460
     const BAND_TILE = 560
     const SHADOW_TILE = 760
@@ -904,13 +902,18 @@ function App() {
               <div
                 key={passingTrain.key}
                 className={`passing-train passing-train--${passingTrain.kind}`}
-                style={{ animationDuration: `${passingTrain.duration}s` }}
+                style={{
+                  animationDuration: `${passingTrain.duration}s`,
+                  '--passing-daylight': timeOfDay.daylight.toFixed(3),
+                } as React.CSSProperties}
               >
-                {passingTrain.kind === 'passenger' ? (
-                  <PassingTrain lightLevel={Math.pow(1 - timeOfDay.daylight, 1.6)} />
-                ) : (
-                  <CargoTrain lightLevel={Math.pow(1 - timeOfDay.daylight, 1.35)} />
-                )}
+                <img
+                  src={passingTrain.kind === 'passenger'
+                    ? '/passing-train-passenger-v2.png'
+                    : '/passing-train-cargo-v2.png'}
+                  alt=""
+                  draggable={false}
+                />
               </div>
             </div>
           )}
