@@ -85,7 +85,7 @@ export function createAudioEngine(onSourceChange?: (source: AudioSource) => void
 
   const musicBus = context.createGain()
   const trainBus = context.createGain()
-  musicBus.gain.value = 0.62
+  musicBus.gain.value = 0.24
   trainBus.gain.value = 0.55
   musicBus.connect(master)
   trainBus.connect(master)
@@ -291,6 +291,21 @@ export function createAudioEngine(onSourceChange?: (source: AudioSource) => void
   crowdNoise.connect(crowdFilter)
   crowdFilter.connect(crowdGain).connect(stationBus)
 
+  // A very low, diffuse carriage murmur. It fills the gaps between individual
+  // procedural conversations without introducing a recognisable recording or
+  // duplicating the train's low-frequency bed.
+  const peopleMurmurFilter = context.createBiquadFilter()
+  peopleMurmurFilter.type = 'bandpass'
+  peopleMurmurFilter.frequency.value = 780
+  peopleMurmurFilter.Q.value = 0.42
+  const peopleMurmurDamping = context.createBiquadFilter()
+  peopleMurmurDamping.type = 'lowpass'
+  peopleMurmurDamping.frequency.value = 2600
+  const peopleMurmurGain = context.createGain()
+  peopleMurmurGain.gain.value = 0.00075
+  crowdNoise.connect(peopleMurmurFilter)
+  peopleMurmurFilter.connect(peopleMurmurDamping).connect(peopleMurmurGain).connect(peopleBus)
+
   // Tinny loudspeaker chain for station announcements
   const speakerFilter = context.createBiquadFilter()
   speakerFilter.type = 'bandpass'
@@ -299,37 +314,6 @@ export function createAudioEngine(onSourceChange?: (source: AudioSource) => void
   const speakerGain = context.createGain()
   speakerGain.gain.value = 0.9
   speakerFilter.connect(speakerGain).connect(stationBus)
-
-  // Real Eurostar cabin recording, spectrally trimmed to retain people and
-  // room reflections without duplicating the low rolling bed. The source is
-  // CC0 according to its embedded metadata and is controlled only by People.
-  const cabinVoices = new Audio('/audio/eurostar-cabin-voices.opus')
-  cabinVoices.preload = 'auto'
-  cabinVoices.loop = true
-  const cabinVoicesSource = context.createMediaElementSource(cabinVoices)
-  const voicesPresence = context.createBiquadFilter()
-  voicesPresence.type = 'peaking'
-  voicesPresence.frequency.value = 1750
-  voicesPresence.Q.value = 0.7
-  voicesPresence.gain.value = 1.5
-  const voicesCompressor = context.createDynamicsCompressor()
-  voicesCompressor.threshold.value = -27
-  voicesCompressor.knee.value = 18
-  voicesCompressor.ratio.value = 2
-  voicesCompressor.attack.value = 0.035
-  voicesCompressor.release.value = 0.5
-  cabinVoicesSource.connect(voicesPresence).connect(voicesCompressor).connect(peopleBus)
-  let cabinVoicesStarted = false
-  cabinVoices.addEventListener('loadedmetadata', () => {
-    if (Number.isFinite(cabinVoices.duration) && cabinVoices.duration > 12) {
-      cabinVoices.currentTime = rand(4, cabinVoices.duration - 4)
-    }
-  }, { once: true })
-  const startCabinVoices = () => {
-    if (cabinVoicesStarted) return
-    cabinVoicesStarted = true
-    void cabinVoices.play().catch(() => { cabinVoicesStarted = false })
-  }
 
   // ---- Live state -----------------------------------------------------------
   let speed = 0
@@ -363,6 +347,7 @@ export function createAudioEngine(onSourceChange?: (source: AudioSource) => void
     set(windFilter.Q, lerp(0.62, 0.9, s), 0.25)
     set(tunnelWhistleGain.gain, inTunnel ? s * 0.008 * (1 + windowOpenVal * 0.8) : 0)
     set(crowdGain.gain, atPlatform ? 0.009 + open * 0.008 : 0)
+    set(peopleMurmurGain.gain, atPlatform ? 0.00055 : 0.00072 + s * 0.00028, 0.8)
     set(verbSend.gain, inTunnel ? 0.19 : atPlatform ? 0.11 : 0.045, 0.6)
     set(verbDamping.frequency, inTunnel ? 2200 : atPlatform ? 3400 : 2800, 0.6)
     set(radioGain.gain, 1 - windowOpenVal * 0.11)
@@ -450,17 +435,17 @@ export function createAudioEngine(onSourceChange?: (source: AudioSource) => void
     dest: AudioNode = peopleBus,
   ) => {
     const osc = context.createOscillator()
-    osc.type = 'sawtooth'
+    osc.type = 'triangle'
     osc.frequency.setValueAtTime(Math.max(60, pitchFrom), at)
     osc.frequency.exponentialRampToValueAtTime(Math.max(60, pitchTo), at + dur)
     const bp1 = context.createBiquadFilter()
     bp1.type = 'bandpass'
     bp1.frequency.value = formants[0]
-    bp1.Q.value = 4.5
+    bp1.Q.value = 3.6
     const bp2 = context.createBiquadFilter()
     bp2.type = 'bandpass'
     bp2.frequency.value = formants[1]
-    bp2.Q.value = 8
+    bp2.Q.value = 6.2
     const g2 = context.createGain()
     g2.gain.value = 0.45
     const env = context.createGain()
@@ -837,10 +822,32 @@ export function createAudioEngine(onSourceChange?: (source: AudioSource) => void
     speakPhrase(context.currentTime + rand(0.1, 1.2), locale, { level: rand(0.0025, 0.005), pan: rand(-0.7, 0.7), maxSyl: 5 })
   }, 1300)
 
+  // Sparse, unintelligible conversations inside the carriage. Alternating
+  // positions and replies suggest real passengers without looping a sample or
+  // allowing recognisable words to dominate the atmosphere.
+  let nextCabinConversation = context.currentTime + rand(2.5, 6)
+  const cabinVoiceTimer = window.setInterval(() => {
+    if (stopped || context.currentTime < nextCabinConversation) return
+    const at = context.currentTime + rand(0.12, 0.65)
+    const firstPan = rand(-0.62, 0.62)
+    const firstEnd = speakPhrase(at, locale, {
+      level: rand(0.0024, 0.0038),
+      pan: firstPan,
+      maxSyl: 5,
+    })
+    if (Math.random() < 0.72) {
+      speakPhrase(firstEnd + rand(0.32, 0.85), locale, {
+        level: rand(0.002, 0.0033),
+        pan: clamp01((firstPan + 1) / 2 + rand(-0.25, 0.25)) * 2 - 1,
+        maxSyl: 4,
+      })
+    }
+    nextCabinConversation = context.currentTime + rand(8, 17)
+  }, 900)
+
   // ---- Procedural door opening (entry screen) ------------------------------------
   const playDoorOpenSound = () => {
     const now = context.currentTime
-    startCabinVoices()
     burst(now, 'bandpass', 760, 0.8, 0.021, 0.008, 0.11, cabinBus, 180)
     burst(now + 0.045, 'bandpass', 210, 0.74, 0.024, 0.15, 0.72, cabinBus, 470)
     burst(now + 0.18, 'highpass', 1900, 0.5, 0.006, 0.12, 0.48, cabinBus, 900)
@@ -982,9 +989,7 @@ export function createAudioEngine(onSourceChange?: (source: AudioSource) => void
       window.clearInterval(cabinMovementTimer)
       window.clearInterval(paTimer)
       window.clearInterval(platformVoiceTimer)
-      cabinVoices.pause()
-      cabinVoices.removeAttribute('src')
-      cabinVoices.load()
+      window.clearInterval(cabinVoiceTimer)
       radio.pause()
       radio.removeAttribute('src')
       radio.load()
@@ -1010,7 +1015,11 @@ export function createAudioEngine(onSourceChange?: (source: AudioSource) => void
       locale = value
     },
     setMusicVolume: (value: number) => {
-      set(musicBus.gain, clamp01(value), 0.08)
+      const normalized = clamp01(value)
+      // A perceptual curve gives the lower half of the slider useful range.
+      // At 2% the music is genuinely near-silent instead of competing with the
+      // deliberately quiet ambience stems.
+      set(musicBus.gain, Math.pow(normalized, 2.4) * 0.78, 0.08)
     },
     setRollingVolume: (value: number) => {
       set(rollingBus.gain, clamp01(value), 0.08)

@@ -280,6 +280,8 @@ function App() {
   // Realism layer: DOM refs for the rAF-driven motion/light loop
   const rigRef = useRef<HTMLDivElement>(null)
   const worldRef = useRef<HTMLDivElement>(null)
+  const sceneTracksRef = useRef(new Map<string, HTMLDivElement>())
+  const sceneLayoutVersionRef = useRef(0)
   const nearFieldRef = useRef<HTMLDivElement>(null)
   const poleStripRef = useRef<HTMLDivElement>(null)
   const tunnelStripsRef = useRef<HTMLDivElement>(null)
@@ -500,13 +502,17 @@ function App() {
   useEffect(() => { windowOpenRef.current = windowOpen / 100 }, [windowOpen])
   useEffect(() => { tunnelRef.current = isTunnel }, [isTunnel])
 
-  // Warm the browser cache with the active route's scene images so scenery
-  // changes stay smooth on slow connections. Locally this is a no-op; online
-  // it fetches each asset once, a few at a time, well before it is needed.
+  // Warm only the images likely to be shown next. Preloading the full route
+  // decoded dozens of large backgrounds while the carriage was already moving.
   useEffect(() => {
-    const urls = Array.from(new Set(
-      currentRoute.scenes.flatMap((scene) => SCENE_PHASES.map((phase) => getSceneSrcForPhase(scene, phase))),
-    ))
+    const phaseIndex = SCENE_PHASES.indexOf(timeOfDay.phase)
+    const phases = [
+      SCENE_PHASES[(phaseIndex + SCENE_PHASES.length - 1) % SCENE_PHASES.length],
+      timeOfDay.phase,
+      SCENE_PHASES[(phaseIndex + 1) % SCENE_PHASES.length],
+    ]
+    const scenes = currentRoute.scenes.slice(journey.sceneIndex, journey.sceneIndex + 2)
+    const urls = Array.from(new Set(scenes.flatMap((scene) => phases.map((phase) => getSceneSrcForPhase(scene, phase)))))
     let cancelled = false
     let index = 0
     const loadNext = () => {
@@ -519,9 +525,14 @@ function App() {
       img.onerror = loadNext
       img.src = url
     }
-    for (let i = 0; i < 3; i += 1) loadNext()
-    return () => { cancelled = true }
-  }, [currentRoute])
+    const timer = window.setTimeout(() => {
+      for (let i = 0; i < 2; i += 1) loadNext()
+    }, 350)
+    return () => {
+      cancelled = true
+      window.clearTimeout(timer)
+    }
+  }, [currentRoute, journey.sceneIndex, timeOfDay.phase])
 
   // Feed live speed into the audio engine and fire travel one-shots
   useEffect(() => {
@@ -565,14 +576,16 @@ function App() {
     let bandX = 0
     let shadowX = 0
     let frameW = 0
+    let sceneLayoutVersion = -1
     let reflLevel = 0
+    let frameCount = 0
     const seed = Math.random() * 100
 
-    const NEAR_TILE = 480
+    const NEAR_TILE = 1920
     const POLE_TILE = 720
     const STRIP_TILE = 460
-    const BAND_TILE = 560
-    const SHADOW_TILE = 760
+    const BAND_TILE = 1120
+    const SHADOW_TILE = 1520
 
     const onResize = () => { frameW = 0 }
     window.addEventListener('resize', onResize)
@@ -583,23 +596,28 @@ function App() {
       speed += (speedTargetRef.current - speed) * Math.min(1, dt * 1.4)
       const reduced = reducedMotionRef.current
       const motion = reduced ? 0 : speed
+      frameCount += 1
+      const updatePaintLayers = frameCount % 2 === 0
 
       // Far scenery: seamless one-directional mirrored loop
       const world = worldRef.current
       if (world && enteredRef.current) {
-        if (!frameW) {
-          const frame = world.querySelector<HTMLElement>('.scene-frame')
+        if (!frameW || sceneLayoutVersion !== sceneLayoutVersionRef.current) {
+          sceneLayoutVersion = sceneLayoutVersionRef.current
+          const firstTrack = sceneTracksRef.current.values().next().value as HTMLDivElement | undefined
+          const frame = firstTrack?.querySelector<HTMLElement>('.scene-frame')
           if (frame) frameW = frame.offsetWidth
         }
         if (frameW) {
           farX = (farX + dt * motion * 30) % (frameW * 2)
-          world.querySelectorAll<HTMLElement>('.scene-track').forEach((track) => {
+          sceneTracksRef.current.forEach((track) => {
             track.style.transform = `translate3d(${-farX}px, 0, 0)`
           })
         }
-        // Scenery judder: the world rattles relative to the carriage
-        const jx = (Math.sin(t * 0.021) + Math.sin(t * 0.037 + 1.7) * 0.6) * motion * 0.9
-        const jy = (Math.sin(t * 0.027 + 0.6) + Math.sin(t * 0.043 + 2.4) * 0.6) * motion * 0.6
+        // Smooth suspension movement: continuous waves avoid frame-to-frame
+        // twitching while still keeping the landscape physically alive.
+        const jx = (Math.sin(t * 0.013) + Math.sin(t * 0.027 + 1.7) * 0.42) * motion * 0.48
+        const jy = (Math.sin(t * 0.017 + 0.6) + Math.sin(t * 0.031 + 2.4) * 0.38) * motion * 0.34
         world.style.transform = `translate3d(${jx.toFixed(2)}px, ${jy.toFixed(2)}px, 0)`
       }
 
@@ -608,8 +626,10 @@ function App() {
       if (nearFieldRef.current) nearFieldRef.current.style.transform = `translate3d(${-nearX}px, 0, 0)`
       poleX = (poleX + dt * motion * 620) % POLE_TILE
       if (poleStripRef.current) poleStripRef.current.style.transform = `translate3d(${-poleX}px, 0, 0)`
-      stripX = (stripX + dt * motion * 880) % STRIP_TILE
-      if (tunnelStripsRef.current) tunnelStripsRef.current.style.transform = `translate3d(${-stripX}px, 0, 0)`
+      if (tunnelRef.current) {
+        stripX = (stripX + dt * motion * 880) % STRIP_TILE
+        if (tunnelStripsRef.current) tunnelStripsRef.current.style.transform = `translate3d(${-stripX}px, 0, 0)`
+      }
 
       // Sunlight flickering through trees across the interior
       bandX = (bandX + dt * motion * 520) % BAND_TILE
@@ -618,7 +638,7 @@ function App() {
         const base = daylightRef.current * motion * 0.75
         const flicker = 0.72 + 0.28 * Math.sin(t * 0.011 + seed) + 0.12 * Math.sin(t * 0.029)
         bands.style.opacity = (base * flicker).toFixed(3)
-        bands.style.backgroundPosition = `${-bandX}px 0`
+        if (updatePaintLayers) bands.style.backgroundPosition = `${-bandX}px 0`
       }
       shadowX = (shadowX + dt * motion * 610) % SHADOW_TILE
       const shadows = tracksideShadowsRef.current
@@ -626,7 +646,7 @@ function App() {
         const daylight = daylightRef.current
         const shadowStrength = motion * (0.055 + daylight * 0.17)
         shadows.style.opacity = reduced ? '0' : shadowStrength.toFixed(3)
-        shadows.style.backgroundPosition = `${-shadowX}px 0`
+        if (updatePaintLayers) shadows.style.backgroundPosition = `${-shadowX}px 0`
       }
       const tunnelGlow = tunnelGlowRef.current
       if (tunnelGlow) {
@@ -648,7 +668,7 @@ function App() {
       if (glassSurface) {
         const closed = 1 - windowOpenRef.current
         glassSurface.style.opacity = (closed * (0.1 + (1 - daylightRef.current) * 0.16)).toFixed(3)
-        glassSurface.style.backgroundPosition = `${Math.sin(t * 0.00012) * 24}% ${Math.cos(t * 0.00009) * 18}%`
+        if (frameCount % 8 === 0) glassSurface.style.backgroundPosition = `${Math.sin(t * 0.00012) * 24}% ${Math.cos(t * 0.00009) * 18}%`
       }
 
       // Carriage vibration + rail-joint jolts synced with the click audio
@@ -664,9 +684,11 @@ function App() {
           : 0
         const passShake = reduced ? 0 : passEnvelope * (passingKindRef.current === 'cargo' ? 0.85 : 1.25)
         const amp = motion
-        const rx = (Math.sin(t * 0.023 + 0.9) + Math.sin(t * 0.041) * 0.5) * amp * 0.42 + (Math.random() - 0.5) * (jolt * 1.1 + passShake)
-        const ry = (Math.sin(t * 0.029 + 2.1) + Math.sin(t * 0.047 + 1.2) * 0.5) * amp * 0.3 + (Math.random() - 0.5) * (jolt * 0.8 + passShake * 0.62)
-        const rr = Math.sin(t * 0.031 + 0.4) * 0.02 * amp + (Math.random() - 0.5) * (jolt * 0.02 + passShake * 0.012)
+        const impactX = Math.sin(t * 0.067 + seed) * 0.66 + Math.sin(t * 0.103 + 1.2) * 0.34
+        const impactY = Math.sin(t * 0.079 + seed * 0.7) * 0.7 + Math.sin(t * 0.121 + 2.1) * 0.3
+        const rx = (Math.sin(t * 0.015 + 0.9) + Math.sin(t * 0.029) * 0.42) * amp * 0.3 + impactX * (jolt * 0.42 + passShake * 0.34)
+        const ry = (Math.sin(t * 0.019 + 2.1) + Math.sin(t * 0.033 + 1.2) * 0.4) * amp * 0.22 + impactY * (jolt * 0.3 + passShake * 0.24)
+        const rr = Math.sin(t * 0.021 + 0.4) * 0.012 * amp + impactX * (jolt * 0.006 + passShake * 0.004)
         rig.style.transform = `translate3d(${rx.toFixed(2)}px, ${ry.toFixed(2)}px, 0) rotate(${rr.toFixed(3)}deg)`
       }
       raf = requestAnimationFrame(tick)
@@ -693,6 +715,9 @@ function App() {
   const beamAngle = 10 + weights.dawn * 14 + weights.day * 10 - weights.golden * 5 + weights.dusk * 8
   const beamColor = weights.golden > 0.35 ? '255, 178, 102' : weights.dawn > 0.4 ? '255, 205, 150' : weights.dusk > 0.3 ? '255, 160, 110' : '255, 240, 205'
   const lampOpacity = clamp((1 - timeOfDay.daylight) * 0.85 + (isTunnel ? 0.35 : 0))
+  const renderedScenes = currentRoute.scenes
+    .map((scene, index) => ({ scene, index, opacity: sceneOpacity(journey.progress, index, currentRoute.scenes) }))
+    .filter(({ opacity }) => opacity > 0.001)
 
   const ensureAudio = () => {
     let engine = audio.current
@@ -876,14 +901,21 @@ function App() {
           } as React.CSSProperties}
           aria-hidden="true"
         >
-          {currentRoute.scenes.map((scene, index) => (entered || entering) && Math.abs(index - journey.sceneIndex) <= 1 && (
+          {(entered || entering) && renderedScenes.map(({ scene, opacity }) => (
             <div
               className={`scene-stage ${scene.station ? 'scene-stage--station' : ''}`}
               key={scene.label}
-              style={{ opacity: sceneOpacity(journey.progress, index, currentRoute.scenes) }}
+              style={{ opacity }}
             >
-              <div className="scene-track">
-                {[false, true, false, true].map((mirror, frameIndex) => (
+              <div
+                className="scene-track"
+                ref={(node) => {
+                  if (node) sceneTracksRef.current.set(scene.label, node)
+                  else sceneTracksRef.current.delete(scene.label)
+                  sceneLayoutVersionRef.current += 1
+                }}
+              >
+                {[false, true, false].map((mirror, frameIndex) => (
                   <div className={`scene-frame ${mirror ? 'scene-frame--mirror' : ''}`} key={frameIndex}>
                     {SCENE_PHASES.map((phase) => {
                       const opacity = timeOfDay.weights[phase]
@@ -1106,14 +1138,14 @@ function App() {
         </div>
       </section>
 
-      <section className="now-playing">
+      <section className={`now-playing ${playing ? 'now-playing--playing' : ''}`}>
         <div className={`cover ${playing ? 'cover--playing' : ''}`}><Headphones size={23} /></div>
         <div className="track-copy">
           <small>NOW PLAYING · {audioSource === 'radio' ? 'LIVE 24/7' : timeOfDay.label}</small>
           <strong>{audioSource === 'radio' ? 'Chilling' : timeOfDay.track}</strong>
           <span>{audioSource === 'radio' ? <><a href="https://loficafe.net/chilling" target="_blank" rel="noreferrer">Lofi Cafe</a> · Train ambience</> : 'Original generative fallback · 72 BPM'}</span>
         </div>
-        <div className="wave" aria-hidden="true">{Array.from({ length: 18 }, (_, i) => <i key={i} style={{ '--i': i } as React.CSSProperties} />)}</div>
+        <div className="wave" aria-hidden="true">{Array.from({ length: 10 }, (_, i) => <i key={i} style={{ '--i': i } as React.CSSProperties} />)}</div>
         <button className="play" onClick={toggleMusic} aria-label={playing ? 'Pause radio' : 'Play radio'}>
           {playing ? <Pause fill="currentColor" size={21} /> : <Play fill="currentColor" size={21} />}
         </button>
