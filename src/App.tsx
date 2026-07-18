@@ -281,6 +281,7 @@ function App() {
   const rigRef = useRef<HTMLDivElement>(null)
   const worldRef = useRef<HTMLDivElement>(null)
   const sceneTracksRef = useRef(new Map<string, HTMLDivElement>())
+  const sceneTrackCallbacksRef = useRef(new Map<string, (node: HTMLDivElement | null) => void>())
   const sceneLayoutVersionRef = useRef(0)
   const nearFieldRef = useRef<HTMLDivElement>(null)
   const poleStripRef = useRef<HTMLDivElement>(null)
@@ -309,6 +310,22 @@ function App() {
   const brakedRef = useRef(false)
   const wasStoppedRef = useRef(false)
   const prevSpeedRef = useRef(0)
+
+  // Keep callback refs stable across the once-per-second clock render. Inline
+  // callback refs were detached and reattached on every tick, invalidating the
+  // scene layout and forcing a synchronous width measurement mid-animation.
+  const getSceneTrackRef = (label: string) => {
+    let callback = sceneTrackCallbacksRef.current.get(label)
+    if (!callback) {
+      callback = (node) => {
+        if (node) sceneTracksRef.current.set(label, node)
+        else sceneTracksRef.current.delete(label)
+        sceneLayoutVersionRef.current += 1
+      }
+      sceneTrackCallbacksRef.current.set(label, callback)
+    }
+    return callback
+  }
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 1000)
@@ -591,7 +608,16 @@ function App() {
     window.addEventListener('resize', onResize)
 
     const tick = (t: number) => {
-      const dt = Math.min(0.05, (t - last) / 1000)
+      // Nothing behind the vestibule is visible yet. Avoid spending the whole
+      // frame budget animating it, and reset the clock so entering never causes
+      // a large catch-up jump.
+      if (!enteredRef.current || document.hidden) {
+        last = t
+        raf = requestAnimationFrame(tick)
+        return
+      }
+
+      const dt = Math.min(0.1, (t - last) / 1000)
       last = t
       speed += (speedTargetRef.current - speed) * Math.min(1, dt * 1.4)
       const reduced = reducedMotionRef.current
@@ -637,16 +663,20 @@ function App() {
       if (bands) {
         const base = daylightRef.current * motion * 0.75
         const flicker = 0.72 + 0.28 * Math.sin(t * 0.011 + seed) + 0.12 * Math.sin(t * 0.029)
-        bands.style.opacity = (base * flicker).toFixed(3)
-        if (updatePaintLayers) bands.style.backgroundPosition = `${-bandX}px 0`
+        if (updatePaintLayers) {
+          bands.style.opacity = (base * flicker).toFixed(3)
+          bands.style.transform = `translate3d(${-bandX}px, 0, 0)`
+        }
       }
       shadowX = (shadowX + dt * motion * 610) % SHADOW_TILE
       const shadows = tracksideShadowsRef.current
       if (shadows) {
         const daylight = daylightRef.current
         const shadowStrength = motion * (0.055 + daylight * 0.17)
-        shadows.style.opacity = reduced ? '0' : shadowStrength.toFixed(3)
-        if (updatePaintLayers) shadows.style.backgroundPosition = `${-shadowX}px 0`
+        if (updatePaintLayers) {
+          shadows.style.opacity = reduced ? '0' : shadowStrength.toFixed(3)
+          shadows.style.transform = `translate3d(${-shadowX}px, 0, 0)`
+        }
       }
       const tunnelGlow = tunnelGlowRef.current
       if (tunnelGlow) {
@@ -909,11 +939,7 @@ function App() {
             >
               <div
                 className="scene-track"
-                ref={(node) => {
-                  if (node) sceneTracksRef.current.set(scene.label, node)
-                  else sceneTracksRef.current.delete(scene.label)
-                  sceneLayoutVersionRef.current += 1
-                }}
+                ref={getSceneTrackRef(scene.label)}
               >
                 {[false, true, false].map((mirror, frameIndex) => (
                   <div className={`scene-frame ${mirror ? 'scene-frame--mirror' : ''}`} key={frameIndex}>

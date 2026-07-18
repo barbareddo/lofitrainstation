@@ -1347,10 +1347,14 @@ button { font: inherit; }
 /* Sunlight bands sweeping the interior (sun through trees) */
 .light-bands {
   position: absolute;
-  inset: -6% -10%;
+  top: -6%;
+  bottom: -6%;
+  left: -10%;
+  right: calc(-10% - 1120px);
   z-index: 0;
   opacity: 0;
   pointer-events: none;
+  will-change: transform, opacity;
   background-image:
     radial-gradient(ellipse 92px 82% at 42% 48%, rgba(255,220,165,.42), rgba(255,208,140,.13) 46%, transparent 74%),
     radial-gradient(ellipse 48px 68% at 76% 62%, rgba(255,232,192,.28), transparent 72%);
@@ -1561,13 +1565,16 @@ button { font: inherit; }
     repeating-linear-gradient(96deg, transparent 0 96px, rgba(255,255,255,.014) 97px 98px, transparent 99px 188px);
   filter: none;
   transition: opacity .35s ease;
-  will-change: opacity, background-position;
+  will-change: opacity;
 }
 
 /* Moving shadows from poles, bridges and trees cross the actual interior. */
 .trackside-shadows {
   position: absolute;
-  inset: -8% -14%;
+  top: -8%;
+  bottom: -8%;
+  left: -14%;
+  right: calc(-14% - 1520px);
   z-index: 0;
   opacity: 0;
   pointer-events: none;
@@ -1578,7 +1585,7 @@ button { font: inherit; }
     linear-gradient(100deg, transparent 0 71%, rgba(5,8,9,.52) 73% 75%, transparent 77%);
   background-size: 1520px 100%, 1520px 100%, 1520px 100%;
   background-repeat: repeat-x;
-  will-change: opacity, background-position;
+  will-change: transform, opacity;
 }
 
 /* Continuous cabin grading: cooler shadows at night, warmer pools at dusk. */
