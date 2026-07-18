@@ -79,6 +79,98 @@ button { font: inherit; }
   z-index: 2; /* Carriage wall lies in front of window pane */
 }
 
+.gentleman-carriage { transition: opacity .8s ease; }
+.gentleman-motion {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  opacity: 0;
+  clip-path: polygon(74% 27%, 83% 29%, 88% 53%, 81% 69%, 67% 100%, 47% 100%, 59% 71%, 66% 43%);
+  transform-origin: 74% 60%;
+  animation: gentleman-shift 36s ease-in-out infinite;
+}
+@keyframes gentleman-shift {
+  0%, 76%, 87%, 100% { opacity: 0; transform: translate3d(0, 0, 0) rotate(0); }
+  78% { opacity: .86; transform: translate3d(0, 0, 0) rotate(0); }
+  81% { opacity: .82; transform: translate3d(.08%, -.16%, 0) rotate(-.05deg); }
+  84% { opacity: .72; transform: translate3d(0, -.06%, 0) rotate(.025deg); }
+}
+
+.lamp-control {
+  position: absolute;
+  left: 53.8%;
+  top: 38%;
+  z-index: 6;
+  width: 6.1%;
+  height: 25.5%;
+  padding: 0;
+  border: 0;
+  border-radius: 48% 48% 20% 20%;
+  color: #f1d6a7;
+  background: transparent;
+  cursor: pointer;
+  pointer-events: auto;
+  -webkit-tap-highlight-color: transparent;
+}
+.lamp-control__glow {
+  position: absolute;
+  left: 50%;
+  top: 42%;
+  width: 650%;
+  height: 270%;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  opacity: 0;
+  background: radial-gradient(ellipse at center, rgba(255, 188, 91, .34) 0%, rgba(228, 126, 42, .18) 24%, rgba(177, 69, 24, .06) 48%, transparent 72%);
+  filter: blur(8px);
+  mix-blend-mode: screen;
+  pointer-events: none;
+  transition: opacity .45s ease;
+}
+.lamp-control--on .lamp-control__glow { opacity: 1; }
+.lamp-control::after {
+  content: '';
+  position: absolute;
+  left: 13%;
+  top: 0;
+  width: 74%;
+  height: 38%;
+  border: 1px solid rgba(243, 202, 139, 0);
+  border-radius: 48% 48% 34% 34%;
+  box-shadow: 0 0 0 rgba(231, 171, 92, 0);
+  transition: border-color .2s ease, box-shadow .2s ease;
+}
+.lamp-control:hover::after,
+.lamp-control:focus-visible::after {
+  border-color: rgba(243, 202, 139, .48);
+  box-shadow: 0 0 18px rgba(231, 171, 92, .2);
+}
+.lamp-control:focus-visible { outline: 2px solid rgba(242, 205, 148, .82); outline-offset: 4px; }
+.lamp-control__label {
+  position: absolute;
+  left: 50%;
+  bottom: -1.7vw;
+  transform: translate(-50%, 5px);
+  padding: .34vw .5vw;
+  border: 1px solid rgba(255,255,255,.13);
+  border-radius: 99px;
+  color: rgba(255,255,255,.78);
+  background: rgba(8, 10, 10, .72);
+  box-shadow: 0 7px 22px rgba(0,0,0,.28);
+  backdrop-filter: blur(10px);
+  font: 500 clamp(5px, .42vw, 8px)/1 'DM Mono', monospace;
+  letter-spacing: .12em;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .18s ease, transform .18s ease;
+}
+.lamp-control:hover .lamp-control__label,
+.lamp-control:focus-visible .lamp-control__label { opacity: 1; transform: translate(-50%, 0); }
+
 /* Interactive Window overlays inside carriage wrapper */
 .window-container {
   position: absolute;
@@ -797,6 +889,7 @@ button { font: inherit; }
 @media (max-width: 820px) {
   .station { min-height: 560px; }
   .trip-card { top: 16%; left: 18px; width: 300px; }
+  .carriage-wrapper { transform: translate(-61.5%, -50%) scale(1.02); }
   .bottom-actions { right: 18px; bottom: 112px; }
   .journey-button { display: none; }
   .now-playing { bottom: 20px; grid-template-columns: 42px 1fr 45px; }
@@ -807,14 +900,14 @@ button { font: inherit; }
   .topbar { inset: 18px 18px auto; }
   .trip-card { top: 14%; left: 14px; width: calc(100% - 28px); padding: 17px; }
   .route-title strong { font-size: 26px; }
-  .carriage-wrapper { transform: translate(-50%, -50%) scale(1.16); }
+  .carriage-wrapper { transform: translate(-69%, -50%) scale(1.03); }
   .now-playing { width: calc(100% - 28px); }
   .bottom-actions { right: 14px; bottom: 104px; }
   .sound-mixer { right: 14px; bottom: 153px; }
   .time-badge { display: none; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .scene, .speed-lines, .grain, .wave i, .dust i, .curtain-fabric, .passing-train { animation: none !important; }
+  .scene, .speed-lines, .grain, .wave i, .dust i, .curtain-fabric, .passing-train, .gentleman-motion { animation: none !important; }
 }
 
 /* ==========================================================================

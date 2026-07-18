@@ -24,6 +24,15 @@ const PEOPLE_VOLUME_KEY = 'nightline.peopleVolume'
 const EXTERIOR_VOLUME_KEY = 'nightline.exteriorVolume'
 const CABIN_VOLUME_KEY = 'nightline.cabinVolume'
 const STATION_VOLUME_KEY = 'nightline.stationVolume'
+const LAMP_KEY = 'nightline.tableLampOn'
+
+type GentlemanMoment = 'morning' | 'afternoon' | 'night'
+
+const GENTLEMAN_ASSETS: Record<GentlemanMoment, string> = {
+  morning: '/gentleman/gentleman-morning.webp',
+  afternoon: '/gentleman/gentleman-afternoon.webp',
+  night: '/gentleman/gentleman-night.webp',
+}
 
 function loadVolume(key: string, fallback: number) {
   try {
@@ -34,6 +43,27 @@ function loadVolume(key: string, fallback: number) {
   } catch {
     return fallback
   }
+}
+
+function loadLampState(fallback: boolean) {
+  try {
+    const storedValue = window.localStorage.getItem(LAMP_KEY)
+    return storedValue === null ? fallback : storedValue === 'true'
+  } catch {
+    return fallback
+  }
+}
+
+function getGentlemanMoment(date: Date): GentlemanMoment {
+  const hour = date.getHours() + date.getMinutes() / 60
+  if (hour >= 5 && hour < 11.5) return 'morning'
+  if (hour >= 11.5 && hour < 18.5) return 'afternoon'
+  return 'night'
+}
+
+function shouldLampStartOn(date: Date) {
+  const hour = date.getHours()
+  return hour >= 18 || hour < 7
 }
 
 interface Scene {
@@ -316,6 +346,7 @@ function App() {
   const [exteriorVolume, setExteriorVolume] = useState(() => loadVolume(EXTERIOR_VOLUME_KEY, 45))
   const [cabinVolume, setCabinVolume] = useState(() => loadVolume(CABIN_VOLUME_KEY, 38))
   const [stationVolume, setStationVolume] = useState(() => loadVolume(STATION_VOLUME_KEY, 35))
+  const [lampOn, setLampOn] = useState(() => loadLampState(shouldLampStartOn(new Date())))
   const audio = useRef<ReturnType<typeof createAudioEngine> | null>(null)
   const musicFadeTimer = useRef<number | null>(null)
 
@@ -424,6 +455,10 @@ function App() {
     audio.current?.setStationVolume(stationVolume / 100)
     try { window.localStorage.setItem(STATION_VOLUME_KEY, String(stationVolume)) } catch { /* storage unavailable */ }
   }, [stationVolume])
+
+  useEffect(() => {
+    try { window.localStorage.setItem(LAMP_KEY, String(lampOn)) } catch { /* storage unavailable */ }
+  }, [lampOn])
 
   // Keep audio engine synchronized with windowOpen state changes
   useEffect(() => {
@@ -555,7 +590,20 @@ function App() {
   const locale = getSceneLocale(journey.scene)
 
   const timeOfDay = useMemo(() => getTimeOfDay(new Date(now)), [now])
+  const gentlemanMoment = useMemo(() => getGentlemanMoment(new Date(now)), [now])
+  const gentlemanSrc = GENTLEMAN_ASSETS[gentlemanMoment]
   const localTime = new Date(now).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+
+  useEffect(() => {
+    if (!entered) return
+    const timer = window.setTimeout(() => {
+      Object.values(GENTLEMAN_ASSETS).forEach((src) => {
+        const image = new Image()
+        image.src = src
+      })
+    }, 1800)
+    return () => window.clearTimeout(timer)
+  }, [entered])
 
   // ---- Realism layer ---------------------------------------------------------
   useEffect(() => {
@@ -1020,7 +1068,30 @@ function App() {
               </div>
             </div>
           )}
-          <img className="carriage" src="/train-carriage.webp" alt="Cozy train compartment looking onto the journey" />
+          <img
+            className="carriage gentleman-carriage"
+            src={gentlemanSrc}
+            alt={`Orient Express-inspired compartment with a lofi gentleman during the ${gentlemanMoment}`}
+            draggable={false}
+          />
+          <img
+            className="gentleman-motion"
+            src={gentlemanSrc}
+            alt=""
+            aria-hidden="true"
+            draggable={false}
+          />
+          <button
+            className={`lamp-control ${lampOn ? 'lamp-control--on' : ''}`}
+            type="button"
+            onClick={() => setLampOn((value) => !value)}
+            aria-label={`${lampOn ? 'Switch off' : 'Switch on'} the table lamp`}
+            aria-pressed={lampOn}
+            title={`${lampOn ? 'Switch off' : 'Switch on'} the table lamp`}
+          >
+            <span className="lamp-control__glow" aria-hidden="true" />
+            <span className="lamp-control__label">LAMP · {lampOn ? 'ON' : 'OFF'}</span>
+          </button>
 
           {/* Wall Mounted Retro-Modern Screen */}
           <section className="trip-card trip-card--wall">
