@@ -22,7 +22,7 @@ type AudioEngine = {
 }
 
 export type AudioSource = 'radio' | 'fallback'
-export type Locale = 'fr' | 'uk' | 'it'
+export type Locale = 'fr' | 'uk' | 'it' | 'de'
 
 const LOFI_STREAM_URL = 'https://radio.loficafe.net/listen/chilling/radio.mp3'
 
@@ -68,6 +68,13 @@ const WALLA: Record<Locale, {
     gap: [0.02, 0.07],
     formants: [[720, 1250], [820, 1400], [660, 1180]],
     contour: 'arc',
+  },
+  de: {
+    pitch: [120, 205],
+    syl: [0.09, 0.18],
+    gap: [0.025, 0.09],
+    formants: [[480, 1450], [590, 1650], [430, 1320]],
+    contour: 'fall',
   },
 }
 

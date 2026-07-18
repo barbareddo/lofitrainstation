@@ -37,7 +37,7 @@ button { font: inherit; }
 .scene--fallback-golden { filter: brightness(0.88) saturate(1.22) sepia(0.24) hue-rotate(6deg); }
 .scene--fallback-dusk { filter: brightness(0.48) saturate(0.72) sepia(0.08) hue-rotate(-22deg); }
 .scene--fallback-night { filter: brightness(0.26) saturate(0.42) sepia(0.06) hue-rotate(-42deg); }
-.scene-stage--station .scene { filter: none; }
+.scene-stage--station .scene:not([class*="scene--fallback-"]) { filter: none; }
 .night-wash, .golden-wash { position: absolute; inset: 0; pointer-events: none; transition: opacity 60s linear; }
 .night-wash { background: linear-gradient(180deg, rgba(3,15,35,.82), rgba(6,19,32,.54) 58%, rgba(12,13,19,.72)); mix-blend-mode: multiply; }
 .golden-wash { background: linear-gradient(115deg, rgba(255,159,66,.74), transparent 46%, rgba(160,85,122,.32)); mix-blend-mode: soft-light; }

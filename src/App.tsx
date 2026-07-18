@@ -15,6 +15,7 @@ import { createAudioEngine, type AudioSource } from './audio'
 const TRAVEL_MS = 4 * 60 * 60 * 1000
 const STOP_MS = 8 * 60 * 1000
 const CALAIS_STOP_MS = 5 * 60 * 1000
+const VENICE_STOP_MS = 8 * 60 * 1000
 const EPOCH = new Date('2026-07-15T05:30:00+02:00').getTime()
 const MUSIC_VOLUME_KEY = 'nightline.musicVolume'
 const TRAIN_VOLUME_KEY = 'nightline.trainVolume'
@@ -92,6 +93,18 @@ const parisLondonScenes: Scene[] = [
   { daySrc: '/scenes/london-st-pancras-day-v3.png', dawnSrc: '/scenes/london-st-pancras-dawn.jpg', afternoonSrc: '/scenes/london-st-pancras-afternoon.jpg', goldenSrc: '/scenes/london-st-pancras-golden.jpg', duskSrc: '/scenes/london-st-pancras-dusk.jpg', nightSrc: '/scenes/london-st-pancras-night.jpg', label: 'London St Pancras Intl', detail: 'Arrival platform · London', at: 0.975, station: true },
 ]
 
+const milanoViennaScenes: Scene[] = [
+  { ...milanoParisScenes[0], detail: 'Departure platform · Milano', at: 0 },
+  { daySrc: '/scenes/lombardy-veneto-plain-day.jpg', dawnSrc: '/scenes/lombardy-veneto-plain-dawn.jpg', afternoonSrc: '/scenes/lombardy-veneto-plain-afternoon.jpg', goldenSrc: '/scenes/lombardy-veneto-plain-golden.jpg', duskSrc: '/scenes/lombardy-veneto-plain-dusk.jpg', nightSrc: '/scenes/lombardy-veneto-plain-night.jpg', label: 'Lombardy & Veneto plains', detail: 'Brescia · Verona · IT', at: 0.13 },
+  { daySrc: '/scenes/venice-lagoon-approach-day.jpg', dawnSrc: '/scenes/venice-lagoon-approach-dawn.jpg', afternoonSrc: '/scenes/venice-lagoon-approach-afternoon.jpg', goldenSrc: '/scenes/venice-lagoon-approach-golden.jpg', duskSrc: '/scenes/venice-lagoon-approach-dusk.jpg', nightSrc: '/scenes/venice-lagoon-approach-night.jpg', label: 'Crossing the Venetian Lagoon', detail: 'Ponte della Libertà · IT', at: 0.27 },
+  { daySrc: '/scenes/venezia-santa-lucia-day.jpg', dawnSrc: '/scenes/venezia-santa-lucia-dawn.jpg', goldenSrc: '/scenes/venezia-santa-lucia-golden.jpg', duskSrc: '/scenes/venezia-santa-lucia-dusk.jpg', nightSrc: '/scenes/venezia-santa-lucia-night.jpg', label: 'Venezia Santa Lucia', detail: 'Lagoon platform · Venezia · IT', at: 0.34, station: true, stopMs: VENICE_STOP_MS },
+  { daySrc: '/scenes/friuli-vineyards-day.jpg', dawnSrc: '/scenes/friuli-vineyards-dawn.jpg', afternoonSrc: '/scenes/friuli-vineyards-afternoon.jpg', goldenSrc: '/scenes/friuli-vineyards-golden.jpg', nightSrc: '/scenes/friuli-vineyards-night.jpg', label: 'Friuli vineyards', detail: 'Treviso · Udine · IT', at: 0.48 },
+  { daySrc: '/scenes/julian-alps-tarvisio-day.jpg', dawnSrc: '/scenes/julian-alps-tarvisio-dawn.jpg', goldenSrc: '/scenes/julian-alps-tarvisio-golden.jpg', duskSrc: '/scenes/julian-alps-tarvisio-dusk.jpg', nightSrc: '/scenes/julian-alps-tarvisio-night.jpg', label: 'Julian Alps', detail: 'Tarvisio · IT', at: 0.62 },
+  { daySrc: '/scenes/carinthia-villach-day.jpg', dawnSrc: '/scenes/carinthia-villach-dawn.jpg', afternoonSrc: '/scenes/carinthia-villach-afternoon.jpg', goldenSrc: '/scenes/carinthia-villach-golden.jpg', duskSrc: '/scenes/carinthia-villach-dusk.jpg', nightSrc: '/scenes/carinthia-villach-night.jpg', label: 'Carinthian lakes', detail: 'Villach · AT', at: 0.74 },
+  { daySrc: '/scenes/semmering-railway-day.jpg', goldenSrc: '/scenes/semmering-railway-golden.jpg', duskSrc: '/scenes/semmering-railway-dusk.jpg', nightSrc: '/scenes/semmering-railway-night.jpg', label: 'Semmering Railway', detail: 'Lower Austria · AT', at: 0.87 },
+  { daySrc: '/scenes/wien-hauptbahnhof-day.jpg', dawnSrc: '/scenes/wien-hauptbahnhof-dawn.jpg', afternoonSrc: '/scenes/wien-hauptbahnhof-afternoon.jpg', label: 'Wien Hauptbahnhof', detail: 'Arrival platform · Vienna', at: 0.975, station: true },
+]
+
 function reverseScenes(scenes: Scene[], departureDetail: string, arrivalDetail: string): Scene[] {
   const lastIndex = scenes.length - 1
   return [...scenes].reverse().map((scene, index) => ({
@@ -137,6 +150,24 @@ const routes: RouteData[] = [
     toCode: 'MIL',
     toName: 'Milano',
     scenes: reverseScenes(milanoParisScenes, 'Departure platform · Paris', 'Platform 7 · Milano'),
+  },
+  {
+    id: 'milano_vienna',
+    name: 'Milano → Vienna',
+    fromCode: 'MIL',
+    fromName: 'Milano',
+    toCode: 'VIE',
+    toName: 'Vienna',
+    scenes: milanoViennaScenes,
+  },
+  {
+    id: 'vienna_milano',
+    name: 'Vienna → Milano',
+    fromCode: 'VIE',
+    fromName: 'Vienna',
+    toCode: 'MIL',
+    toName: 'Milano',
+    scenes: reverseScenes(milanoViennaScenes, 'Departure platform · Vienna', 'Platform 7 · Milano'),
   }
 ]
 
@@ -148,7 +179,37 @@ function getRouteLegMs(route: RouteData) {
   return getRouteTravelMs(route) + STOP_MS
 }
 
-const FULL_CYCLE_MS = routes.reduce((total, route) => total + getRouteLegMs(route), 0)
+function getNextRoute(fromCode: string, decisionNumber: number) {
+  const connections = routes.filter((route) => route.fromCode === fromCode)
+  if (connections.length === 0) throw new Error(`No onward route from ${fromCode}`)
+  if (connections.length === 1) return connections[0]
+
+  // A stable pseudo-random choice keeps the shared train in the same place for
+  // every listener, while still allowing it to choose a different branch each
+  // time it reaches a connected city.
+  let seed = decisionNumber + 0x9e3779b9
+  for (const character of fromCode) seed = Math.imul(seed ^ character.charCodeAt(0), 0x85ebca6b)
+  seed ^= seed >>> 16
+  return connections[(seed >>> 0) % connections.length]
+}
+
+function getScheduledLeg(timestamp: number) {
+  let remaining = Math.max(0, timestamp - EPOCH)
+  let decisionNumber = 0
+  let route = routes.find((candidate) => candidate.id === 'milano_paris') || routes[0]
+
+  while (remaining >= getRouteLegMs(route)) {
+    remaining -= getRouteLegMs(route)
+    decisionNumber += 1
+    route = getNextRoute(route.toCode, decisionNumber)
+  }
+
+  return {
+    route,
+    legElapsed: remaining,
+    nextRoute: getNextRoute(route.toCode, decisionNumber + 1),
+  }
+}
 
 function sceneOpacity(progress: number, index: number, currentScenes: Scene[]) {
   const blend = index === 1 || index === currentScenes.length - 1 ? 0.02 : 0.035
@@ -236,8 +297,9 @@ function formatDuration(ms: number) {
 }
 
 // Which country's sound palette the current scene/station should use
-function getSceneLocale(scene: Scene): 'fr' | 'uk' | 'it' {
+function getSceneLocale(scene: Scene): 'fr' | 'uk' | 'it' | 'de' {
   if (scene.label.includes('London') || scene.detail.endsWith('· UK')) return 'uk'
+  if (scene.detail.endsWith('· AT') || scene.label.includes('Wien') || scene.detail.includes('Austria')) return 'de'
   if (scene.label.includes('Milano') || scene.label.includes('Milan') || scene.detail.endsWith('· IT')) return 'it'
   return 'fr'
 }
@@ -298,6 +360,7 @@ function App() {
   const speedTargetRef = useRef(0)
   const daylightRef = useRef(0)
   const windowOpenRef = useRef(0)
+  const curtainRef = useRef(0.15)
   const tunnelRef = useRef(false)
   const enteredRef = useRef(false)
   const reducedMotionRef = useRef(false)
@@ -432,17 +495,12 @@ function App() {
     }
   }
 
-  const itineraryElapsed = ((now - EPOCH) % FULL_CYCLE_MS + FULL_CYCLE_MS) % FULL_CYCLE_MS
-  let currentRouteIndex = 0
-  let legElapsed = itineraryElapsed
-  while (legElapsed >= getRouteLegMs(routes[currentRouteIndex])) {
-    legElapsed -= getRouteLegMs(routes[currentRouteIndex])
-    currentRouteIndex += 1
-  }
-  const currentRoute = routes[currentRouteIndex]
+  const scheduledLeg = useMemo(() => getScheduledLeg(now), [now])
+  const currentRoute = scheduledLeg.route
+  const legElapsed = scheduledLeg.legElapsed
   const routeTravelMs = getRouteTravelMs(currentRoute)
   const routeLegMs = getRouteLegMs(currentRoute)
-  const nextRoute = routes[(currentRouteIndex + 1) % routes.length]
+  const nextRoute = scheduledLeg.nextRoute
 
   const journey = useMemo(() => {
     const elapsed = legElapsed
@@ -511,6 +569,7 @@ function App() {
   useEffect(() => { enteredRef.current = entered }, [entered])
   useEffect(() => { daylightRef.current = timeOfDay.daylight }, [timeOfDay.daylight])
   useEffect(() => { windowOpenRef.current = windowOpen / 100 }, [windowOpen])
+  useEffect(() => { curtainRef.current = curtainHeight / 100 }, [curtainHeight])
   useEffect(() => { tunnelRef.current = isTunnel }, [isTunnel])
 
   // Warm only the images likely to be shown next. Preloading the full route
@@ -650,7 +709,8 @@ function App() {
       bandX = (bandX + dt * motion * 520) % BAND_TILE
       const bands = lightBandsRef.current
       if (bands) {
-        const base = daylightRef.current * motion * 0.75
+        // A lowered curtain blocks the outside light with the view
+        const base = daylightRef.current * motion * 0.75 * (1 - curtainRef.current)
         const flicker = 0.72 + 0.28 * Math.sin(t * 0.011 + seed) + 0.12 * Math.sin(t * 0.029)
         bands.style.opacity = (base * flicker).toFixed(3)
         bands.style.backgroundPosition = `${-bandX}px 0`
@@ -659,7 +719,8 @@ function App() {
       const shadows = tracksideShadowsRef.current
       if (shadows) {
         const daylight = daylightRef.current
-        const shadowStrength = motion * (0.055 + daylight * 0.17)
+        // A lowered curtain blocks trackside shadows from entering the cabin
+        const shadowStrength = motion * (0.055 + daylight * 0.17) * (1 - curtainRef.current)
         shadows.style.opacity = reduced ? '0' : shadowStrength.toFixed(3)
         shadows.style.backgroundPosition = `${-shadowX}px 0`
       }
@@ -706,7 +767,7 @@ function App() {
 
   // Interior sunbeam: angle, strength and tint follow the time of day
   const weights = timeOfDay.weights
-  const beamStrength = clamp(weights.day * 0.5 + weights.afternoon * 0.42 + weights.golden * 0.8 + weights.dawn * 0.45 + weights.dusk * 0.12) * (isTunnel ? 0.1 : 1)
+  const beamStrength = clamp(weights.day * 0.5 + weights.afternoon * 0.42 + weights.golden * 0.8 + weights.dawn * 0.45 + weights.dusk * 0.12) * (isTunnel ? 0.1 : 1) * (1 - curtainHeight / 100)
   const beamAngle = 10 + weights.dawn * 14 + weights.day * 10 - weights.golden * 5 + weights.dusk * 8
   const beamColor = weights.golden > 0.35 ? '255, 178, 102' : weights.dawn > 0.4 ? '255, 205, 150' : weights.dusk > 0.3 ? '255, 160, 110' : '255, 240, 205'
   const lampOpacity = clamp((1 - timeOfDay.daylight) * 0.85 + (isTunnel ? 0.35 : 0))
@@ -1182,7 +1243,7 @@ function App() {
           })}
         </ol>
 
-        <div className="next-route"><small>NEXT LEG</small><b>{nextRoute.name}</b><span>Departs after the 8-minute platform stop.</span></div>
+        <div className="next-route"><small>TRAIN'S NEXT CHOICE</small><b>{nextRoute.name}</b><span>Chosen from the connections available here. Departs after the 8-minute platform stop.</span></div>
       </aside>
     </main>
   )
