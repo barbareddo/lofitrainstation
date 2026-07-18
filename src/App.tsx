@@ -278,7 +278,6 @@ function App() {
   const entryDragged = useRef(false)
 
   // Realism layer: DOM refs for the rAF-driven motion/light loop
-  const rigRef = useRef<HTMLDivElement>(null)
   const worldRef = useRef<HTMLDivElement>(null)
   const sceneTracksRef = useRef(new Map<string, HTMLDivElement>())
   const sceneTrackCallbacksRef = useRef(new Map<string, (node: HTMLDivElement | null) => void>())
@@ -295,13 +294,8 @@ function App() {
   // Passing train on the far track: visual streak synced with the audio event
   const [passingTrain, setPassingTrain] = useState<{ key: number; duration: number; kind: 'passenger' | 'cargo' } | null>(null)
   const passingTrainTimer = useRef<number | null>(null)
-  const passingStartRef = useRef(0)
-  const passingDurationRef = useRef(0)
-  const passingKindRef = useRef<'passenger' | 'cargo'>('passenger')
-
   // Realism layer: mutable values shared with the frame loop
   const speedTargetRef = useRef(0)
-  const joltRef = useRef(0)
   const daylightRef = useRef(0)
   const windowOpenRef = useRef(0)
   const tunnelRef = useRef(false)
@@ -595,14 +589,13 @@ function App() {
     let frameW = 0
     let sceneLayoutVersion = -1
     let reflLevel = 0
-    let frameCount = 0
     const seed = Math.random() * 100
 
-    const NEAR_TILE = 1920
+    const NEAR_TILE = 480
     const POLE_TILE = 720
     const STRIP_TILE = 460
-    const BAND_TILE = 1120
-    const SHADOW_TILE = 1520
+    const BAND_TILE = 560
+    const SHADOW_TILE = 760
 
     const onResize = () => { frameW = 0 }
     window.addEventListener('resize', onResize)
@@ -617,14 +610,11 @@ function App() {
         return
       }
 
-      const dt = Math.min(0.1, (t - last) / 1000)
+      const dt = Math.min(0.05, (t - last) / 1000)
       last = t
       speed += (speedTargetRef.current - speed) * Math.min(1, dt * 1.4)
       const reduced = reducedMotionRef.current
       const motion = reduced ? 0 : speed
-      frameCount += 1
-      const updatePaintLayers = frameCount % 2 === 0
-
       // Far scenery: seamless one-directional mirrored loop
       const world = worldRef.current
       if (world && enteredRef.current) {
@@ -640,10 +630,9 @@ function App() {
             track.style.transform = `translate3d(${-farX}px, 0, 0)`
           })
         }
-        // Smooth suspension movement: continuous waves avoid frame-to-frame
-        // twitching while still keeping the landscape physically alive.
-        const jx = (Math.sin(t * 0.013) + Math.sin(t * 0.027 + 1.7) * 0.42) * motion * 0.48
-        const jy = (Math.sin(t * 0.017 + 0.6) + Math.sin(t * 0.031 + 2.4) * 0.38) * motion * 0.34
+        // Scenery judder: the world rattles relative to the carriage.
+        const jx = (Math.sin(t * 0.021) + Math.sin(t * 0.037 + 1.7) * 0.6) * motion * 0.9
+        const jy = (Math.sin(t * 0.027 + 0.6) + Math.sin(t * 0.043 + 2.4) * 0.6) * motion * 0.6
         world.style.transform = `translate3d(${jx.toFixed(2)}px, ${jy.toFixed(2)}px, 0)`
       }
 
@@ -663,20 +652,16 @@ function App() {
       if (bands) {
         const base = daylightRef.current * motion * 0.75
         const flicker = 0.72 + 0.28 * Math.sin(t * 0.011 + seed) + 0.12 * Math.sin(t * 0.029)
-        if (updatePaintLayers) {
-          bands.style.opacity = (base * flicker).toFixed(3)
-          bands.style.transform = `translate3d(${-bandX}px, 0, 0)`
-        }
+        bands.style.opacity = (base * flicker).toFixed(3)
+        bands.style.backgroundPosition = `${-bandX}px 0`
       }
       shadowX = (shadowX + dt * motion * 610) % SHADOW_TILE
       const shadows = tracksideShadowsRef.current
       if (shadows) {
         const daylight = daylightRef.current
         const shadowStrength = motion * (0.055 + daylight * 0.17)
-        if (updatePaintLayers) {
-          shadows.style.opacity = reduced ? '0' : shadowStrength.toFixed(3)
-          shadows.style.transform = `translate3d(${-shadowX}px, 0, 0)`
-        }
+        shadows.style.opacity = reduced ? '0' : shadowStrength.toFixed(3)
+        shadows.style.backgroundPosition = `${-shadowX}px 0`
       }
       const tunnelGlow = tunnelGlowRef.current
       if (tunnelGlow) {
@@ -698,29 +683,9 @@ function App() {
       if (glassSurface) {
         const closed = 1 - windowOpenRef.current
         glassSurface.style.opacity = (closed * (0.1 + (1 - daylightRef.current) * 0.16)).toFixed(3)
-        if (frameCount % 8 === 0) glassSurface.style.backgroundPosition = `${Math.sin(t * 0.00012) * 24}% ${Math.cos(t * 0.00009) * 18}%`
+        glassSurface.style.backgroundPosition = `${Math.sin(t * 0.00012) * 24}% ${Math.cos(t * 0.00009) * 18}%`
       }
 
-      // Carriage vibration + rail-joint jolts synced with the click audio
-      const rig = rigRef.current
-      if (rig) {
-        joltRef.current *= Math.exp(-dt * 5.5)
-        const jolt = reduced ? 0 : joltRef.current
-        const passProgress = passingDurationRef.current > 0
-          ? (t - passingStartRef.current) / passingDurationRef.current
-          : 2
-        const passEnvelope = passProgress >= 0 && passProgress <= 1
-          ? Math.pow(Math.sin(Math.PI * passProgress), passingKindRef.current === 'cargo' ? 1.35 : 2.2)
-          : 0
-        const passShake = reduced ? 0 : passEnvelope * (passingKindRef.current === 'cargo' ? 0.85 : 1.25)
-        const amp = motion
-        const impactX = Math.sin(t * 0.067 + seed) * 0.66 + Math.sin(t * 0.103 + 1.2) * 0.34
-        const impactY = Math.sin(t * 0.079 + seed * 0.7) * 0.7 + Math.sin(t * 0.121 + 2.1) * 0.3
-        const rx = (Math.sin(t * 0.015 + 0.9) + Math.sin(t * 0.029) * 0.42) * amp * 0.3 + impactX * (jolt * 0.42 + passShake * 0.34)
-        const ry = (Math.sin(t * 0.019 + 2.1) + Math.sin(t * 0.033 + 1.2) * 0.4) * amp * 0.22 + impactY * (jolt * 0.3 + passShake * 0.24)
-        const rr = Math.sin(t * 0.021 + 0.4) * 0.012 * amp + impactX * (jolt * 0.006 + passShake * 0.004)
-        rig.style.transform = `translate3d(${rx.toFixed(2)}px, ${ry.toFixed(2)}px, 0) rotate(${rr.toFixed(3)}deg)`
-      }
       raf = requestAnimationFrame(tick)
     }
     raf = requestAnimationFrame(tick)
@@ -746,7 +711,7 @@ function App() {
   const beamColor = weights.golden > 0.35 ? '255, 178, 102' : weights.dawn > 0.4 ? '255, 205, 150' : weights.dusk > 0.3 ? '255, 160, 110' : '255, 240, 205'
   const lampOpacity = clamp((1 - timeOfDay.daylight) * 0.85 + (isTunnel ? 0.35 : 0))
   const renderedScenes = currentRoute.scenes
-    .map((scene, index) => ({ scene, index, opacity: sceneOpacity(journey.progress, index, currentRoute.scenes) }))
+    .map((scene, index) => ({ scene, opacity: sceneOpacity(journey.progress, index, currentRoute.scenes) }))
     .filter(({ opacity }) => opacity > 0.001)
 
   const ensureAudio = () => {
@@ -765,15 +730,9 @@ function App() {
       engine.setAtPlatform(isAtPlatform)
       engine.setTunnel(isTunnel)
       engine.setLocale(locale)
-      engine.onRailClick = (strength) => {
-        joltRef.current = Math.min(0.9, joltRef.current + strength * 0.7)
-      }
       engine.onPassingTrain = (duration, kind) => {
         if (reducedMotionRef.current) return
         if (passingTrainTimer.current !== null) window.clearTimeout(passingTrainTimer.current)
-        passingStartRef.current = performance.now()
-        passingDurationRef.current = duration * 1000
-        passingKindRef.current = kind
         setPassingTrain({ key: Date.now(), duration, kind })
         passingTrainTimer.current = window.setTimeout(() => setPassingTrain(null), duration * 1000 + 500)
       }
@@ -837,6 +796,7 @@ function App() {
     // Match CSS transition timing (1.4s) before unmounting overlay
     setTimeout(() => {
       setEntered(true)
+      setEntering(false)
     }, 1550)
   }
 
@@ -919,7 +879,7 @@ function App() {
         </div>
       )}
 
-      <div className="rig" ref={rigRef}>
+      <div className="rig">
         <div
           className={`world ${journey.stopped || journey.midRouteStopped ? 'world--stopped' : ''} ${journey.scene.station ? 'world--platform' : ''} ${entered ? 'world--live' : ''}`}
           ref={worldRef}
