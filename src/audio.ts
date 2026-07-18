@@ -9,7 +9,10 @@ type AudioEngine = {
   setWindowOpen: (value: number) => void
   setMusicVolume: (value: number) => void
   setRollingVolume: (value: number) => void
-  setAmbienceVolume: (value: number) => void
+  setPeopleVolume: (value: number) => void
+  setExteriorVolume: (value: number) => void
+  setCabinVolume: (value: number) => void
+  setStationVolume: (value: number) => void
   setSpeed: (value: number) => void
   setAtPlatform: (value: boolean) => void
   setTunnel: (value: boolean) => void
@@ -87,13 +90,25 @@ export function createAudioEngine(onSourceChange?: (source: AudioSource) => void
   musicBus.connect(master)
   trainBus.connect(master)
 
-  // The train side splits in two, each with its own mixer slider:
-  //   rollingBus  — wheels, track, rumble, roar, singing rails, squeal
-  //   ambienceBus — wind, crowd, voices, PA, stations, brakes, doors
+  // Independent user-facing stems. The ambience parent stays at unity and
+  // collects people, exterior, cabin and station before the shared carriage
+  // acoustics; each child gain is controlled by its own mixer slider.
   const rollingBus = context.createGain()
   const ambienceBus = context.createGain()
+  const peopleBus = context.createGain()
+  const exteriorBus = context.createGain()
+  const cabinBus = context.createGain()
+  const stationBus = context.createGain()
   rollingBus.gain.value = 0.55
-  ambienceBus.gain.value = 0.55
+  ambienceBus.gain.value = 1
+  peopleBus.gain.value = 0.3
+  exteriorBus.gain.value = 0.45
+  cabinBus.gain.value = 0.38
+  stationBus.gain.value = 0.35
+  peopleBus.connect(ambienceBus)
+  exteriorBus.connect(ambienceBus)
+  cabinBus.connect(ambienceBus)
+  stationBus.connect(ambienceBus)
 
   // The listener is inside a furnished wooden carriage, not beside the rail.
   // This shared acoustic path removes brittle highs when the window is closed
@@ -242,7 +257,7 @@ export function createAudioEngine(onSourceChange?: (source: AudioSource) => void
   const hissGain = context.createGain()
   hissGain.gain.value = 0.0016
   noise.connect(hissFilter)
-  hissFilter.connect(hissDamping).connect(hissGain).connect(ambienceBus)
+  hissFilter.connect(hissDamping).connect(hissGain).connect(cabinBus)
 
   // Rushing air at the window gap
   const windFilter = context.createBiquadFilter()
@@ -254,7 +269,7 @@ export function createAudioEngine(onSourceChange?: (source: AudioSource) => void
   const windPan = context.createStereoPanner()
   windPan.pan.value = 0.58
   noise.connect(windFilter)
-  windFilter.connect(windGain).connect(windPan).connect(ambienceBus)
+  windFilter.connect(windGain).connect(windPan).connect(exteriorBus)
 
   // Tunnel pressure whistle (narrow, high — that "in a tube" ringing)
   const tunnelWhistleFilter = context.createBiquadFilter()
@@ -264,7 +279,7 @@ export function createAudioEngine(onSourceChange?: (source: AudioSource) => void
   const tunnelWhistleGain = context.createGain()
   tunnelWhistleGain.gain.value = 0
   noise.connect(tunnelWhistleFilter)
-  tunnelWhistleFilter.connect(tunnelWhistleGain).connect(ambienceBus)
+  tunnelWhistleFilter.connect(tunnelWhistleGain).connect(exteriorBus)
 
   // Muffled platform crowd when standing at a station
   const crowdFilter = context.createBiquadFilter()
@@ -274,7 +289,7 @@ export function createAudioEngine(onSourceChange?: (source: AudioSource) => void
   const crowdGain = context.createGain()
   crowdGain.gain.value = 0
   crowdNoise.connect(crowdFilter)
-  crowdFilter.connect(crowdGain).connect(ambienceBus)
+  crowdFilter.connect(crowdGain).connect(stationBus)
 
   // Tinny loudspeaker chain for station announcements
   const speakerFilter = context.createBiquadFilter()
@@ -283,7 +298,38 @@ export function createAudioEngine(onSourceChange?: (source: AudioSource) => void
   speakerFilter.Q.value = 0.5
   const speakerGain = context.createGain()
   speakerGain.gain.value = 0.9
-  speakerFilter.connect(speakerGain).connect(ambienceBus)
+  speakerFilter.connect(speakerGain).connect(stationBus)
+
+  // Real Eurostar cabin recording, spectrally trimmed to retain people and
+  // room reflections without duplicating the low rolling bed. The source is
+  // CC0 according to its embedded metadata and is controlled only by People.
+  const cabinVoices = new Audio('/audio/eurostar-cabin-voices.opus')
+  cabinVoices.preload = 'auto'
+  cabinVoices.loop = true
+  const cabinVoicesSource = context.createMediaElementSource(cabinVoices)
+  const voicesPresence = context.createBiquadFilter()
+  voicesPresence.type = 'peaking'
+  voicesPresence.frequency.value = 1750
+  voicesPresence.Q.value = 0.7
+  voicesPresence.gain.value = 1.5
+  const voicesCompressor = context.createDynamicsCompressor()
+  voicesCompressor.threshold.value = -27
+  voicesCompressor.knee.value = 18
+  voicesCompressor.ratio.value = 2
+  voicesCompressor.attack.value = 0.035
+  voicesCompressor.release.value = 0.5
+  cabinVoicesSource.connect(voicesPresence).connect(voicesCompressor).connect(peopleBus)
+  let cabinVoicesStarted = false
+  cabinVoices.addEventListener('loadedmetadata', () => {
+    if (Number.isFinite(cabinVoices.duration) && cabinVoices.duration > 12) {
+      cabinVoices.currentTime = rand(4, cabinVoices.duration - 4)
+    }
+  }, { once: true })
+  const startCabinVoices = () => {
+    if (cabinVoicesStarted) return
+    cabinVoicesStarted = true
+    void cabinVoices.play().catch(() => { cabinVoicesStarted = false })
+  }
 
   // ---- Live state -----------------------------------------------------------
   let speed = 0
@@ -331,7 +377,7 @@ export function createAudioEngine(onSourceChange?: (source: AudioSource) => void
     peak: number,
     attack: number,
     decay: number,
-    dest: AudioNode = ambienceBus,
+    dest: AudioNode = cabinBus,
     freqTo?: number,
   ) => {
     const src = context.createBufferSource()
@@ -362,7 +408,7 @@ export function createAudioEngine(onSourceChange?: (source: AudioSource) => void
     attack = 0.03,
     type: OscillatorType = 'sine',
     pan = 0,
-    dest: AudioNode = ambienceBus,
+    dest: AudioNode = cabinBus,
   ) => {
     const osc = context.createOscillator()
     osc.type = type
@@ -386,10 +432,10 @@ export function createAudioEngine(onSourceChange?: (source: AudioSource) => void
   }
 
   // A small bell: fundamental + two inharmonic partials, long decay
-  const bell = (at: number, freq: number, dur: number, peak: number) => {
-    tone(at, freq, freq, dur, peak, 0.008)
-    tone(at, freq * 2.4, freq * 2.38, dur * 0.6, peak * 0.35, 0.005)
-    tone(at, freq * 4.16, freq * 4.1, dur * 0.32, peak * 0.12, 0.004)
+  const bell = (at: number, freq: number, dur: number, peak: number, dest: AudioNode = stationBus) => {
+    tone(at, freq, freq, dur, peak, 0.008, 'sine', 0, dest)
+    tone(at, freq * 2.4, freq * 2.38, dur * 0.6, peak * 0.35, 0.005, 'sine', 0, dest)
+    tone(at, freq * 4.16, freq * 4.1, dur * 0.32, peak * 0.12, 0.004, 'sine', 0, dest)
   }
 
   // ---- Voice synthesis (unintelligible "walla" chatter) -----------------------
@@ -401,7 +447,7 @@ export function createAudioEngine(onSourceChange?: (source: AudioSource) => void
     formants: [number, number],
     level: number,
     pan: number,
-    dest: AudioNode = ambienceBus,
+    dest: AudioNode = peopleBus,
   ) => {
     const osc = context.createOscillator()
     osc.type = 'sawtooth'
@@ -444,7 +490,7 @@ export function createAudioEngine(onSourceChange?: (source: AudioSource) => void
     const w = WALLA[loc]
     const level = options.level ?? 0.008
     const pan = options.pan ?? 0
-    const dest = options.dest ?? ambienceBus
+    const dest = options.dest ?? peopleBus
     const syllables = 2 + Math.floor(rand(0, (options.maxSyl ?? 5) - 1))
     const base = rand(w.pitch[0], w.pitch[1])
     let t = at
@@ -467,18 +513,18 @@ export function createAudioEngine(onSourceChange?: (source: AudioSource) => void
     const pan = rand(-0.25, 0.25)
     if (loc === 'uk') {
       // "AAH-bohd!" — two broad syllables
-      speakSyllable(at, 215, 190, 0.3, [780, 1200], 0.013, pan)
-      speakSyllable(at + 0.36, 190, 148, 0.34, [500, 950], 0.012, pan)
+      speakSyllable(at, 215, 190, 0.3, [780, 1200], 0.013, pan, stationBus)
+      speakSyllable(at + 0.36, 190, 148, 0.34, [500, 950], 0.012, pan, stationBus)
     } else if (loc === 'fr') {
       // "ah-vwah-TYH!" — three syllables, rising tail
-      speakSyllable(at, 200, 205, 0.17, [700, 1100], 0.011, pan)
-      speakSyllable(at + 0.21, 210, 215, 0.15, [450, 900], 0.01, pan)
-      speakSyllable(at + 0.4, 225, 250, 0.3, [600, 1400], 0.013, pan)
+      speakSyllable(at, 200, 205, 0.17, [700, 1100], 0.011, pan, stationBus)
+      speakSyllable(at + 0.21, 210, 215, 0.15, [450, 900], 0.01, pan, stationBus)
+      speakSyllable(at + 0.4, 225, 250, 0.3, [600, 1400], 0.013, pan, stationBus)
     } else {
       // "ah-BOR-doh!" — three melodic syllables
-      speakSyllable(at, 220, 225, 0.18, [750, 1250], 0.012, pan)
-      speakSyllable(at + 0.23, 205, 195, 0.17, [550, 1000], 0.011, pan)
-      speakSyllable(at + 0.44, 235, 180, 0.32, [700, 1150], 0.013, pan)
+      speakSyllable(at, 220, 225, 0.18, [750, 1250], 0.012, pan, stationBus)
+      speakSyllable(at + 0.23, 205, 195, 0.17, [550, 1000], 0.011, pan, stationBus)
+      speakSyllable(at + 0.44, 235, 180, 0.32, [700, 1150], 0.013, pan, stationBus)
     }
   }
 
@@ -487,14 +533,18 @@ export function createAudioEngine(onSourceChange?: (source: AudioSource) => void
     const at = context.currentTime + rand(0.1, 0.6)
     let announcementAt = at + 1.3
     if (loc === 'fr') {
-      // SNCF signature: C–G–A–E (Do, Sol, La, Mi) — soft and warm
-      const notes = [261.63, 392.0, 440.0, 659.25]
-      const gaps = [0, 0.34, 0.64, 1.0]
+      // Original French-station chime. Its short crystalline envelope and PA
+      // perspective evoke a French concourse, while the D–F#–A–E melody and
+      // contour remain deliberately distinct from SNCF's sonic signature.
+      const notes = [293.66, 369.99, 440.0, 329.63]
+      const gaps = [0, 0.38, 0.76, 1.18]
       notes.forEach((freq, i) => {
-        tone(at + gaps[i], freq, freq, 0.55, 0.011, 0.02, 'triangle')
-        tone(at + gaps[i], freq * 2, freq * 2, 0.4, 0.004, 0.02, 'sine')
+        const finalNote = i === notes.length - 1
+        tone(at + gaps[i], freq, freq * 0.998, finalNote ? 0.86 : 0.64, finalNote ? 0.0125 : 0.011, 0.018, 'triangle', -0.12, speakerFilter)
+        tone(at + gaps[i] + 0.006, freq * 2.01, freq * 2, finalNote ? 0.62 : 0.44, 0.0032, 0.012, 'sine', -0.12, speakerFilter)
+        burst(at + gaps[i], 'bandpass', freq * 3.7, 3.1, 0.0022, 0.004, 0.08, speakerFilter, freq * 3.15)
       })
-      announcementAt = at + 1.6
+      announcementAt = at + 2.15
     } else if (loc === 'uk') {
       // "Ding Dong Dang" bell — brighter and louder
       bell(at, 783.99, 1.1, 0.02)
@@ -502,11 +552,18 @@ export function createAudioEngine(onSourceChange?: (source: AudioSource) => void
       bell(at + 0.84, 523.25, 1.7, 0.023)
       announcementAt = at + 1.7
     } else {
-      // Italian "bi-bu-ba" — three light ascending notes
-      tone(at, 523.25, 523.25, 0.32, 0.012, 0.015, 'triangle')
-      tone(at + 0.28, 587.33, 587.33, 0.32, 0.012, 0.015, 'triangle')
-      tone(at + 0.56, 659.25, 659.25, 0.5, 0.013, 0.015, 'triangle')
-      announcementAt = at + 1.2
+      // Original Italian-station chime. The bright bell-like attack, spacious
+      // PA decay and 2.6-second footprint follow the supplied station reference,
+      // while the G–B–A–D–C melody remains intentionally original.
+      const notes = [392.0, 493.88, 440.0, 587.33, 523.25]
+      const gaps = [0, 0.34, 0.7, 1.12, 1.62]
+      notes.forEach((freq, i) => {
+        const finalNote = i === notes.length - 1
+        tone(at + gaps[i], freq, freq * 0.997, finalNote ? 0.92 : 0.55, finalNote ? 0.0125 : 0.0105, 0.014, 'triangle', 0.1, speakerFilter)
+        tone(at + gaps[i] + 0.008, freq * 2, freq * 1.994, finalNote ? 0.62 : 0.38, 0.0028, 0.01, 'sine', 0.1, speakerFilter)
+        burst(at + gaps[i], 'bandpass', freq * 3.4, 2.8, 0.0018, 0.003, 0.07, speakerFilter, freq * 2.9)
+      })
+      announcementAt = at + 2.62
     }
     // …followed by a muffled, unintelligible loudspeaker announcement
     let t = announcementAt + rand(0.2, 0.5)
@@ -608,7 +665,7 @@ export function createAudioEngine(onSourceChange?: (source: AudioSource) => void
       set(windGain.gain, windowOpenVal * (0.0025 + speed * 0.034) * Math.max(0.35, gust), 0.12)
       set(windFilter.frequency, 330 + windowOpenVal * 410 + speed * 260 + Math.sin(t * 2.3) * 54, 0.12)
       if (windowOpenVal > 0.5 && speed > 0.6 && Math.random() < 0.05) {
-        burst(t, 'lowpass', 140, 0.55, 0.012, 0.015, 0.14, ambienceBus, 72)
+        burst(t, 'lowpass', 140, 0.55, 0.012, 0.015, 0.14, exteriorBus, 72)
       }
     }
   }, 160)
@@ -691,7 +748,7 @@ export function createAudioEngine(onSourceChange?: (source: AudioSource) => void
     airGain.connect(passMix)
     passMix.connect(cabinFilter)
     cabinFilter.connect(panner)
-    panner.connect(ambienceBus)
+    panner.connect(exteriorBus)
 
     // A short, darker reflection from the wood and glass makes the sound feel
     // located inside the compartment instead of pasted onto the headphones.
@@ -705,7 +762,7 @@ export function createAudioEngine(onSourceChange?: (source: AudioSource) => void
     panner.connect(reflectionDelay)
     reflectionDelay.connect(reflectionFilter)
     reflectionFilter.connect(reflectionGain)
-    reflectionGain.connect(ambienceBus)
+    reflectionGain.connect(exteriorBus)
     src.start(at)
     src.stop(at + dur + 0.1)
     if (cargo) {
@@ -715,13 +772,13 @@ export function createAudioEngine(onSourceChange?: (source: AudioSource) => void
         const progress = 0.2 + i * 0.085
         const pan = lerp(-0.78, 0.78, progress)
         const wagonAt = at + dur * progress
-        tone(wagonAt, 52 + rand(0, 7), 38, 0.28, 0.009 * openness, 0.02, 'sine', pan)
-        burst(wagonAt + 0.05, 'bandpass', rand(150, 260), 0.7, 0.008 * openness, 0.008, 0.14, ambienceBus)
+        tone(wagonAt, 52 + rand(0, 7), 38, 0.28, 0.009 * openness, 0.02, 'sine', pan, exteriorBus)
+        burst(wagonAt + 0.05, 'bandpass', rand(150, 260), 0.7, 0.008 * openness, 0.008, 0.14, exteriorBus)
       }
     } else {
       // Pressure wave and turbine note bend downward at the closest point.
-      tone(at + dur * 0.19, 88, 51, dur * 0.65, 0.014 * openness, dur * 0.2, 'sine', 0)
-      tone(at + dur * 0.28, 220, 148, dur * 0.46, 0.0035 * openness, 0.08, 'triangle', 0)
+      tone(at + dur * 0.19, 88, 51, dur * 0.65, 0.014 * openness, dur * 0.2, 'sine', 0, exteriorBus)
+      tone(at + dur * 0.28, 220, 148, dur * 0.46, 0.0035 * openness, 0.08, 'triangle', 0, exteriorBus)
     }
     engine.onPassingTrain?.(dur, cargo ? 'cargo' : 'passenger')
   }, 2000)
@@ -730,8 +787,8 @@ export function createAudioEngine(onSourceChange?: (source: AudioSource) => void
   const playHorn = (at: number, level: number, pan = 0) => {
     // Two-tone horn a fourth apart, each note slightly detuned for a slow beat
     for (const base of [311, 415]) {
-      tone(at, base * 0.985, base, 1.7, level, 0.24, 'triangle', pan, ambienceBus)
-      tone(at, base * 1.006, base, 1.7, level * 0.7, 0.28, 'sine', pan, ambienceBus)
+      tone(at, base * 0.985, base, 1.7, level, 0.24, 'triangle', pan, exteriorBus)
+      tone(at, base * 1.006, base, 1.7, level * 0.7, 0.28, 'sine', pan, exteriorBus)
     }
   }
   const crossingTimer = window.setInterval(() => {
@@ -741,7 +798,7 @@ export function createAudioEngine(onSourceChange?: (source: AudioSource) => void
     const bellsAt = at + rand(0.8, 1.4)
     const strikes = 6 + Math.floor(rand(0, 4))
     for (let i = 0; i < strikes; i += 1) {
-      bell(bellsAt + i * 0.42, i % 2 === 0 ? 1046.5 : 784, 0.5, 0.007)
+      bell(bellsAt + i * 0.42, i % 2 === 0 ? 1046.5 : 784, 0.5, 0.007, exteriorBus)
     }
   }, 1000)
 
@@ -762,7 +819,7 @@ export function createAudioEngine(onSourceChange?: (source: AudioSource) => void
     panner.pan.value = pan
     const localBus = context.createGain()
     localBus.gain.value = 0.72
-    localBus.connect(panner).connect(ambienceBus)
+    localBus.connect(panner).connect(cabinBus)
     burst(at, 'bandpass', rand(115, 220), 1.5, rand(0.003, 0.006), 0.025, rand(0.16, 0.32), localBus, rand(90, 155))
     if (Math.random() < 0.45) {
       burst(at + rand(0.08, 0.2), 'bandpass', rand(420, 760), 2.1, rand(0.0012, 0.0028), 0.012, rand(0.08, 0.18), localBus)
@@ -780,20 +837,15 @@ export function createAudioEngine(onSourceChange?: (source: AudioSource) => void
     speakPhrase(context.currentTime + rand(0.1, 1.2), locale, { level: rand(0.0025, 0.005), pan: rand(-0.7, 0.7), maxSyl: 5 })
   }, 1300)
 
-  // ---- Random quiet passenger chatter inside the carriage while moving ----------
-  const movingVoiceTimer = window.setInterval(() => {
-    if (stopped || speed < 0.3 || inTunnel || Math.random() > 1 / 90) return
-    speakPhrase(context.currentTime + rand(0.2, 1.5), locale, { level: rand(0.0018, 0.0038), pan: rand(-0.55, 0.55), maxSyl: 4 })
-  }, 1000)
-
   // ---- Procedural door opening (entry screen) ------------------------------------
   const playDoorOpenSound = () => {
     const now = context.currentTime
-    burst(now, 'bandpass', 760, 0.8, 0.021, 0.008, 0.11, ambienceBus, 180)
-    burst(now + 0.045, 'bandpass', 210, 0.74, 0.024, 0.15, 0.72, ambienceBus, 470)
-    burst(now + 0.18, 'highpass', 1900, 0.5, 0.006, 0.12, 0.48, ambienceBus, 900)
-    tone(now + 0.76, 88, 62, 0.13, 0.011, 0.008)
-    burst(now + 0.76, 'lowpass', 260, 0.55, 0.018, 0.006, 0.11)
+    startCabinVoices()
+    burst(now, 'bandpass', 760, 0.8, 0.021, 0.008, 0.11, cabinBus, 180)
+    burst(now + 0.045, 'bandpass', 210, 0.74, 0.024, 0.15, 0.72, cabinBus, 470)
+    burst(now + 0.18, 'highpass', 1900, 0.5, 0.006, 0.12, 0.48, cabinBus, 900)
+    tone(now + 0.76, 88, 62, 0.13, 0.011, 0.008, 'sine', 0, cabinBus)
+    burst(now + 0.76, 'lowpass', 260, 0.55, 0.018, 0.006, 0.11, cabinBus)
   }
 
   // ---- Brake application into a station ------------------------------------------
@@ -802,31 +854,31 @@ export function createAudioEngine(onSourceChange?: (source: AudioSource) => void
     const now = context.currentTime
     if (now - lastBrakes < 6) return
     lastBrakes = now
-    burst(now, 'highpass', 1850, 0.48, 0.021, 0.18, 2.7, ambienceBus, 3200)
-    burst(now + 0.08, 'bandpass', 940, 3.2, 0.006, 0.22, 1.35, ambienceBus, 540)
-    burst(now + 2.35, 'bandpass', 720, 0.82, 0.012, 0.04, 0.44)
-    tone(now + 2.64, 65, 48, 0.12, 0.018, 0.009)
-    burst(now + 2.64, 'lowpass', 260, 0.62, 0.02, 0.007, 0.12)
+    burst(now, 'highpass', 1850, 0.48, 0.021, 0.18, 2.7, rollingBus, 3200)
+    burst(now + 0.08, 'bandpass', 940, 3.2, 0.006, 0.22, 1.35, rollingBus, 540)
+    burst(now + 2.35, 'bandpass', 720, 0.82, 0.012, 0.04, 0.44, rollingBus)
+    tone(now + 2.64, 65, 48, 0.12, 0.018, 0.009, 'sine', 0, rollingBus)
+    burst(now + 2.64, 'lowpass', 260, 0.62, 0.02, 0.007, 0.12, rollingBus)
   }
 
   // ---- Leaving a station: loud whistle, conductor shout, door beeps, slam -----------
   const playDepartureSound = () => {
     const now = context.currentTime
     // loud conductor whistle — long-short double blast
-    tone(now, 659, 655, 0.5, 0.026, 0.05)
-    tone(now, 987, 983, 0.5, 0.017, 0.05)
-    tone(now + 0.85, 659, 657, 0.28, 0.02, 0.04)
-    tone(now + 0.85, 987, 985, 0.28, 0.013, 0.04)
+    tone(now, 659, 655, 0.5, 0.026, 0.05, 'sine', 0, stationBus)
+    tone(now, 987, 983, 0.5, 0.017, 0.05, 'sine', 0, stationBus)
+    tone(now + 0.85, 659, 657, 0.28, 0.02, 0.04, 'sine', 0, stationBus)
+    tone(now + 0.85, 987, 985, 0.28, 0.013, 0.04, 'sine', 0, stationBus)
     // the conductor's shout
     shout(now + 1.2, locale)
     // door closing warning: bip bip bip
     for (let i = 0; i < 3; i += 1) {
-      tone(now + 2.1 + i * 0.17, 988, 986, 0.075, 0.009, 0.008, 'square')
+      tone(now + 2.1 + i * 0.17, 988, 986, 0.075, 0.009, 0.008, 'square', 0, cabinBus)
     }
     // Pneumatic seals and a restrained structure-borne door closure.
-    burst(now + 2.58, 'highpass', 2400, 0.5, 0.006, 0.08, 0.34, ambienceBus, 900)
-    tone(now + 2.75, 72, 54, 0.14, 0.018, 0.01)
-    burst(now + 2.75, 'lowpass', 290, 0.65, 0.024, 0.008, 0.12)
+    burst(now + 2.58, 'highpass', 2400, 0.5, 0.006, 0.08, 0.34, cabinBus, 900)
+    tone(now + 2.75, 72, 54, 0.14, 0.018, 0.01, 'sine', 0, cabinBus)
+    burst(now + 2.75, 'lowpass', 290, 0.65, 0.024, 0.008, 0.12, cabinBus)
   }
 
   // ---- Generative fallback chords (when the stream is unreachable) -------------------
@@ -930,7 +982,9 @@ export function createAudioEngine(onSourceChange?: (source: AudioSource) => void
       window.clearInterval(cabinMovementTimer)
       window.clearInterval(paTimer)
       window.clearInterval(platformVoiceTimer)
-      window.clearInterval(movingVoiceTimer)
+      cabinVoices.pause()
+      cabinVoices.removeAttribute('src')
+      cabinVoices.load()
       radio.pause()
       radio.removeAttribute('src')
       radio.load()
@@ -961,8 +1015,17 @@ export function createAudioEngine(onSourceChange?: (source: AudioSource) => void
     setRollingVolume: (value: number) => {
       set(rollingBus.gain, clamp01(value), 0.08)
     },
-    setAmbienceVolume: (value: number) => {
-      set(ambienceBus.gain, clamp01(value), 0.08)
+    setPeopleVolume: (value: number) => {
+      set(peopleBus.gain, clamp01(value), 0.08)
+    },
+    setExteriorVolume: (value: number) => {
+      set(exteriorBus.gain, clamp01(value), 0.08)
+    },
+    setCabinVolume: (value: number) => {
+      set(cabinBus.gain, clamp01(value), 0.08)
+    },
+    setStationVolume: (value: number) => {
+      set(stationBus.gain, clamp01(value), 0.08)
     },
   }
 

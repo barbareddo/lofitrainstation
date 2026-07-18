@@ -19,7 +19,10 @@ const EPOCH = new Date('2026-07-15T05:30:00+02:00').getTime()
 const MUSIC_VOLUME_KEY = 'nightline.musicVolume'
 const TRAIN_VOLUME_KEY = 'nightline.trainVolume'
 const ROLLING_VOLUME_KEY = 'nightline.rollingVolume'
-const AMBIENCE_VOLUME_KEY = 'nightline.ambienceVolume'
+const PEOPLE_VOLUME_KEY = 'nightline.peopleVolume'
+const EXTERIOR_VOLUME_KEY = 'nightline.exteriorVolume'
+const CABIN_VOLUME_KEY = 'nightline.cabinVolume'
+const STATION_VOLUME_KEY = 'nightline.stationVolume'
 
 function loadVolume(key: string, fallback: number) {
   try {
@@ -247,7 +250,10 @@ function App() {
   const [showMixer, setShowMixer] = useState(false)
   const [musicVolume, setMusicVolume] = useState(() => loadVolume(MUSIC_VOLUME_KEY, 62))
   const [rollingVolume, setRollingVolume] = useState(() => loadVolume(ROLLING_VOLUME_KEY, loadVolume(TRAIN_VOLUME_KEY, 55)))
-  const [ambienceVolume, setAmbienceVolume] = useState(() => loadVolume(AMBIENCE_VOLUME_KEY, loadVolume(TRAIN_VOLUME_KEY, 55)))
+  const [peopleVolume, setPeopleVolume] = useState(() => loadVolume(PEOPLE_VOLUME_KEY, 30))
+  const [exteriorVolume, setExteriorVolume] = useState(() => loadVolume(EXTERIOR_VOLUME_KEY, 45))
+  const [cabinVolume, setCabinVolume] = useState(() => loadVolume(CABIN_VOLUME_KEY, 38))
+  const [stationVolume, setStationVolume] = useState(() => loadVolume(STATION_VOLUME_KEY, 35))
   const audio = useRef<ReturnType<typeof createAudioEngine> | null>(null)
   const musicFadeTimer = useRef<number | null>(null)
 
@@ -324,9 +330,24 @@ function App() {
   }, [rollingVolume])
 
   useEffect(() => {
-    audio.current?.setAmbienceVolume(ambienceVolume / 100)
-    try { window.localStorage.setItem(AMBIENCE_VOLUME_KEY, String(ambienceVolume)) } catch { /* storage unavailable */ }
-  }, [ambienceVolume])
+    audio.current?.setPeopleVolume(peopleVolume / 100)
+    try { window.localStorage.setItem(PEOPLE_VOLUME_KEY, String(peopleVolume)) } catch { /* storage unavailable */ }
+  }, [peopleVolume])
+
+  useEffect(() => {
+    audio.current?.setExteriorVolume(exteriorVolume / 100)
+    try { window.localStorage.setItem(EXTERIOR_VOLUME_KEY, String(exteriorVolume)) } catch { /* storage unavailable */ }
+  }, [exteriorVolume])
+
+  useEffect(() => {
+    audio.current?.setCabinVolume(cabinVolume / 100)
+    try { window.localStorage.setItem(CABIN_VOLUME_KEY, String(cabinVolume)) } catch { /* storage unavailable */ }
+  }, [cabinVolume])
+
+  useEffect(() => {
+    audio.current?.setStationVolume(stationVolume / 100)
+    try { window.localStorage.setItem(STATION_VOLUME_KEY, String(stationVolume)) } catch { /* storage unavailable */ }
+  }, [stationVolume])
 
   // Keep audio engine synchronized with windowOpen state changes
   useEffect(() => {
@@ -680,7 +701,10 @@ function App() {
       audio.current = engine
       engine.setMusicVolume(musicVolume / 100)
       engine.setRollingVolume(rollingVolume / 100)
-      engine.setAmbienceVolume(ambienceVolume / 100)
+      engine.setPeopleVolume(peopleVolume / 100)
+      engine.setExteriorVolume(exteriorVolume / 100)
+      engine.setCabinVolume(cabinVolume / 100)
+      engine.setStationVolume(stationVolume / 100)
       engine.setWindowOpen(windowOpen / 100)
       engine.setSpeed(journey.speed)
       engine.setAtPlatform(isAtPlatform)
@@ -1102,12 +1126,24 @@ function App() {
           <input aria-label="Music volume" type="range" min="0" max="100" value={musicVolume} onChange={(event) => setMusicVolume(Number(event.target.value))} />
         </label>
         <label>
-          <span><b>Rolling</b><em>{rollingVolume}%</em></span>
-          <input aria-label="Rolling sound volume — wheels, track and rumble" type="range" min="0" max="100" value={rollingVolume} onChange={(event) => setRollingVolume(Number(event.target.value))} />
+          <span><b>Train</b><em>{rollingVolume}%</em></span>
+          <input aria-label="Train volume — wheels, track and rumble" type="range" min="0" max="100" value={rollingVolume} onChange={(event) => setRollingVolume(Number(event.target.value))} />
         </label>
         <label>
-          <span><b>Ambience</b><em>{ambienceVolume}%</em></span>
-          <input aria-label="Ambience volume — wind, voices, stations" type="range" min="0" max="100" value={ambienceVolume} onChange={(event) => setAmbienceVolume(Number(event.target.value))} />
+          <span><b>People</b><em>{peopleVolume}%</em></span>
+          <input aria-label="People volume — conversations inside the carriage" type="range" min="0" max="100" value={peopleVolume} onChange={(event) => setPeopleVolume(Number(event.target.value))} />
+        </label>
+        <label>
+          <span><b>Exterior</b><em>{exteriorVolume}%</em></span>
+          <input aria-label="Exterior volume — wind, passing trains and trackside sounds" type="range" min="0" max="100" value={exteriorVolume} onChange={(event) => setExteriorVolume(Number(event.target.value))} />
+        </label>
+        <label>
+          <span><b>Cabin</b><em>{cabinVolume}%</em></span>
+          <input aria-label="Cabin volume — ventilation, doors and interior movement" type="range" min="0" max="100" value={cabinVolume} onChange={(event) => setCabinVolume(Number(event.target.value))} />
+        </label>
+        <label>
+          <span><b>Station</b><em>{stationVolume}%</em></span>
+          <input aria-label="Station volume — announcements, jingles and platform sounds" type="range" min="0" max="100" value={stationVolume} onChange={(event) => setStationVolume(Number(event.target.value))} />
         </label>
       </section>
 
