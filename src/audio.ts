@@ -285,20 +285,6 @@ export function createAudioEngine(onSourceChange?: (source: AudioSource) => void
   speakerGain.gain.value = 0.9
   speakerFilter.connect(speakerGain).connect(ambienceBus)
 
-  // Vinyl surface noise glued to the music bus for a cozy radio feel
-  const vinylNoise = context.createBufferSource()
-  vinylNoise.buffer = white
-  vinylNoise.loop = true
-  vinylNoise.playbackRate.value = 0.82
-  vinylNoise.start()
-  const vinylFilter = context.createBiquadFilter()
-  vinylFilter.type = 'highpass'
-  vinylFilter.frequency.value = 3600
-  const vinylGain = context.createGain()
-  vinylGain.gain.value = 0
-  vinylNoise.connect(vinylFilter)
-  vinylFilter.connect(vinylGain).connect(musicBus)
-
   // ---- Live state -----------------------------------------------------------
   let speed = 0
   let windowOpenVal = 0
@@ -800,12 +786,6 @@ export function createAudioEngine(onSourceChange?: (source: AudioSource) => void
     speakPhrase(context.currentTime + rand(0.2, 1.5), locale, { level: rand(0.0018, 0.0038), pan: rand(-0.55, 0.55), maxSyl: 4 })
   }, 1000)
 
-  // ---- Vinyl crackle on the music bus -----------------------------------------
-  const vinylTimer = window.setInterval(() => {
-    if (musicPaused || stopped || Math.random() > 0.42) return
-    burst(context.currentTime + 0.01, 'highpass', rand(2100, 3400), 0.6, rand(0.0007, 0.0022), 0.0015, 0.018, musicBus)
-  }, 130)
-
   // ---- Procedural door opening (entry screen) ------------------------------------
   const playDoorOpenSound = () => {
     const now = context.currentTime
@@ -914,7 +894,6 @@ export function createAudioEngine(onSourceChange?: (source: AudioSource) => void
     context,
     startMusic: async () => {
       musicPaused = false
-      set(vinylGain.gain, 0.00065, 0.5)
       try {
         radio.load()
         await radio.play()
@@ -926,7 +905,6 @@ export function createAudioEngine(onSourceChange?: (source: AudioSource) => void
     },
     pauseMusic: () => {
       musicPaused = true
-      set(vinylGain.gain, 0, 0.2)
       radio.pause()
       stopFallback()
       if (reconnectTimer !== null) window.clearTimeout(reconnectTimer)
@@ -953,7 +931,6 @@ export function createAudioEngine(onSourceChange?: (source: AudioSource) => void
       window.clearInterval(paTimer)
       window.clearInterval(platformVoiceTimer)
       window.clearInterval(movingVoiceTimer)
-      window.clearInterval(vinylTimer)
       radio.pause()
       radio.removeAttribute('src')
       radio.load()
