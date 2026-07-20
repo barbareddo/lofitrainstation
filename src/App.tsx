@@ -953,6 +953,15 @@ function App() {
       className={`station station--${timeOfDay.phase} ${isTunnel ? 'station--tunnel' : ''} ${passingTrain ? `station--train-passing station--train-passing-${passingTrain.kind}` : ''} ${!entered ? 'station--not-entered' : ''} ${entering ? 'station--entering' : ''}`}
       style={{ '--entry-reveal': entryProgress } as React.CSSProperties}
     >
+      <div className="visually-hidden">
+        <h1>Nightline — Lofi Radio: a Night Train Journey Through Europe</h1>
+        <p>
+          Nightline is a free live lofi radio. Listen to continuous lofi hip hop beats layered with
+          rain, rolling wheels and station ambience while an AI-generated night train travels from
+          Milan to Paris to London. No sign-up, no ads — just lofi music for studying, focus, working,
+          relaxing or sleeping, streaming live 24/7 in your browser.
+        </p>
+      </div>
       {!entered && (
         <div className={`corridor-overlay ${entering ? 'corridor-overlay--entering' : ''} ${draggingEntry ? 'corridor-overlay--dragging' : ''}`}>
           <div className="vestibule-backdrop" aria-hidden="true" />
