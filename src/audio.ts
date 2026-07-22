@@ -1023,6 +1023,16 @@ export function createAudioEngine(onSourceChange?: (source: AudioSource) => void
     },
     setMusicVolume: (value: number) => {
       const normalized = clamp01(value)
+      // Zero is a real mute, not the tail of the perceptual fade. Muting the
+      // media element as well as the shared bus keeps both the live stream and
+      // the generated fallback silent, even if an earlier automation is still
+      // settling.
+      radio.muted = normalized === 0
+      if (normalized === 0) {
+        musicBus.gain.cancelScheduledValues(context.currentTime)
+        musicBus.gain.setValueAtTime(0, context.currentTime)
+        return
+      }
       // A perceptual curve gives the lower half of the slider useful range.
       // At 2% the music is genuinely near-silent instead of competing with the
       // deliberately quiet ambience stems.
