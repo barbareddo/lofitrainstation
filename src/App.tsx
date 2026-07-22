@@ -135,6 +135,16 @@ const milanoViennaScenes: Scene[] = [
   { daySrc: '/scenes/wien-hauptbahnhof-day.jpg', dawnSrc: '/scenes/wien-hauptbahnhof-dawn.jpg', afternoonSrc: '/scenes/wien-hauptbahnhof-afternoon.jpg', label: 'Wien Hauptbahnhof', detail: 'Arrival platform · Vienna', at: 0.975, station: true },
 ]
 
+const viennaParisScenes: Scene[] = [
+  { ...milanoViennaScenes[milanoViennaScenes.length - 1], detail: 'Departure platform · Vienna', at: 0 },
+  { daySrc: '/scenes/danube-westbahn-day.jpg', dawnSrc: '/scenes/danube-westbahn-dawn.jpg', afternoonSrc: '/scenes/danube-westbahn-afternoon.jpg', goldenSrc: '/scenes/danube-westbahn-golden.jpg', duskSrc: '/scenes/danube-westbahn-dusk.jpg', nightSrc: '/scenes/danube-westbahn-night.jpg', label: 'Danube & Westbahn', detail: 'St. Pölten · Linz · AT', at: 0.15 },
+  { daySrc: '/scenes/salzburg-foothills-day.jpg', dawnSrc: '/scenes/salzburg-foothills-dawn.jpg', afternoonSrc: '/scenes/salzburg-foothills-afternoon.jpg', goldenSrc: '/scenes/salzburg-foothills-golden.jpg', duskSrc: '/scenes/salzburg-foothills-dusk.jpg', nightSrc: '/scenes/salzburg-foothills-night.jpg', label: 'Salzburg Alpine Foothills', detail: 'Salzburg · AT', at: 0.34 },
+  { daySrc: '/scenes/bavarian-countryside-day.jpg', dawnSrc: '/scenes/bavarian-countryside-dawn.jpg', afternoonSrc: '/scenes/bavarian-countryside-afternoon.jpg', goldenSrc: '/scenes/bavarian-countryside-golden.jpg', duskSrc: '/scenes/bavarian-countryside-dusk.jpg', nightSrc: '/scenes/bavarian-countryside-night.jpg', label: 'Bavarian countryside', detail: 'Rosenheim · München · DE', at: 0.53 },
+  { daySrc: '/scenes/alsace-rhine-plain-day.jpg', dawnSrc: '/scenes/alsace-rhine-plain-dawn.jpg', afternoonSrc: '/scenes/alsace-rhine-plain-afternoon.jpg', goldenSrc: '/scenes/alsace-rhine-plain-golden.jpg', duskSrc: '/scenes/alsace-rhine-plain-dusk.jpg', nightSrc: '/scenes/alsace-rhine-plain-night.jpg', label: 'Rhine Plain & Alsace', detail: 'Karlsruhe · Strasbourg · FR', at: 0.74 },
+  { ...milanoParisScenes[milanoParisScenes.length - 2], at: 0.88 },
+  { ...milanoParisScenes[milanoParisScenes.length - 1], detail: 'Arrival platform · Paris', at: 0.975 },
+]
+
 function reverseScenes(scenes: Scene[], departureDetail: string, arrivalDetail: string): Scene[] {
   const lastIndex = scenes.length - 1
   return [...scenes].reverse().map((scene, index) => ({
@@ -198,6 +208,24 @@ const routes: RouteData[] = [
     toCode: 'MIL',
     toName: 'Milano',
     scenes: reverseScenes(milanoViennaScenes, 'Departure platform · Vienna', 'Platform 7 · Milano'),
+  },
+  {
+    id: 'vienna_paris',
+    name: 'Vienna → Paris',
+    fromCode: 'VIE',
+    fromName: 'Vienna',
+    toCode: 'PAR',
+    toName: 'Paris',
+    scenes: viennaParisScenes,
+  },
+  {
+    id: 'paris_vienna',
+    name: 'Paris → Vienna',
+    fromCode: 'PAR',
+    fromName: 'Paris',
+    toCode: 'VIE',
+    toName: 'Vienna',
+    scenes: reverseScenes(viennaParisScenes, 'Departure platform · Paris', 'Arrival platform · Vienna'),
   }
 ]
 
@@ -329,7 +357,7 @@ function formatDuration(ms: number) {
 // Which country's sound palette the current scene/station should use
 function getSceneLocale(scene: Scene): 'fr' | 'uk' | 'it' | 'de' {
   if (scene.label.includes('London') || scene.detail.endsWith('· UK')) return 'uk'
-  if (scene.detail.endsWith('· AT') || scene.label.includes('Wien') || scene.detail.includes('Austria')) return 'de'
+  if (scene.detail.endsWith('· AT') || scene.detail.endsWith('· DE') || scene.label.includes('Wien') || scene.detail.includes('Austria')) return 'de'
   if (scene.label.includes('Milano') || scene.label.includes('Milan') || scene.detail.endsWith('· IT')) return 'it'
   return 'fr'
 }
