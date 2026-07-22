@@ -1130,9 +1130,11 @@ function App() {
             <span className="lamp-control__label">LAMP · {lampOn ? 'ON' : 'OFF'}</span>
           </button>
 
-          {/* Wall Mounted Retro-Modern Screen */}
+          {/* Art-deco journey plaque integrated into the carriage wall */}
           <section className="trip-card trip-card--wall">
-            <div className="eyebrow">{isAtPlatform ? 'NOW AT PLATFORM' : 'CURRENT JOURNEY'}</div>
+            <div className="eyebrow journey-heading">
+              <span>{isAtPlatform ? 'NOW AT PLATFORM' : 'CURRENT JOURNEY'}</span>
+            </div>
             <div className="route-title">
               <div><strong>{currentRoute.fromCode}</strong><span>{currentRoute.fromName}</span></div>
               <div className="route-line"><i /><Route size={18} /><i /></div>
@@ -1145,9 +1147,16 @@ function App() {
             </div>
           </section>
 
-          {/* Vintage Analog Wall Clock */}
-          <div className="analog-clock">
+          {/* Pullman-style analog wall clock */}
+          <div className="analog-clock" role="img" aria-label={`Local time ${localTime}`}>
             <div className="clock-dial">
+              <div className="clock-signature" aria-hidden="true"><b>NIGHTLINE</b><small>MILANO</small></div>
+              <div className="clock-numerals" aria-hidden="true">
+                <span className="numeral-12">XII</span>
+                <span className="numeral-3">III</span>
+                <span className="numeral-6">VI</span>
+                <span className="numeral-9">IX</span>
+              </div>
               <div className="clock-hand clock-hand--hour" style={{ transform: `rotate(${hourDeg}deg)` }} />
               <div className="clock-hand clock-hand--minute" style={{ transform: `rotate(${minuteDeg}deg)` }} />
               <div className="clock-hand clock-hand--second" style={{ transform: `rotate(${secondDeg}deg)` }} />
